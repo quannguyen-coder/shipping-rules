@@ -36,6 +36,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   let rules;
   try {
+    const { admin } = await authenticate.public.appProxy(request);
+
+    let feeVariantId: string | null = null;
+    if (admin) {
+      const shopMetaRes = await admin.graphql(
+        `#graphql
+          query PublishedRulesConfig {
+            shop {
+              metafield(namespace: "$app", key: "shipping_rules_config") {
+                jsonValue
+              }
+            }
+          }`,
+      );
+      const shopMetaJson = (await shopMetaRes.json()) as {
+        data?: {
+          shop?: {
+            metafield?: {
+              jsonValue?: unknown;
+            } | null;
+          };
+        };
+      };
+      const cfg =
+        (shopMetaJson.data?.shop?.metafield?.jsonValue as
+          | Record<string, unknown>
+          | null) ?? {};
+      feeVariantId =
+        typeof cfg.feeVariantId === "string" ? cfg.feeVariantId : null;
+    }
+
     rules = await prisma.shippingRule.findMany({
       where: { shop, published: true, enabled: true },
       orderBy: [{ weightMinGrams: "asc" }, { priority: "desc" }],
@@ -47,28 +78,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         priority: true,
       },
     });
+
+    const body = rules.map((r) => ({
+      weightMinGrams: r.weightMinGrams,
+      weightMaxGrams: r.weightMaxGrams,
+      feeAmount: r.feeAmount?.toString() ?? null,
+      feePercent: r.feePercent?.toString() ?? null,
+      priority: r.priority,
+    }));
+
+    return Response.json(
+      {
+        feeVariantId,
+        rules: body,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "private, max-age=60",
+        },
+      },
+    );
   } catch (err) {
     console.error("[published-shipping-rules] prisma", err);
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: "database", message }, { status: 500 });
   }
-
-  const body = rules.map((r) => ({
-    weightMinGrams: r.weightMinGrams,
-    weightMaxGrams: r.weightMaxGrams,
-    feeAmount: r.feeAmount?.toString() ?? null,
-    feePercent: r.feePercent?.toString() ?? null,
-    priority: r.priority,
-  }));
-
-  return Response.json(
-    { rules: body },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "private, max-age=60",
-      },
-    },
-  );
 };
 
