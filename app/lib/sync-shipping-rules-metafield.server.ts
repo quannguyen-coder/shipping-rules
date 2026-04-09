@@ -13,6 +13,9 @@ const METAFIELD_KEY = "shipping_rules_config";
 export async function syncShippingRulesMetafield(
   admin: AdminClient,
   shopDomain: string,
+  options?: {
+    feeVariantId?: string | null;
+  },
 ): Promise<void> {
   const rules = await prisma.shippingRule.findMany({
     where: { shop: shopDomain, enabled: true, published: true },
@@ -55,7 +58,7 @@ export async function syncShippingRulesMetafield(
     (shopJson.data?.shop?.metafield?.jsonValue as Record<string, unknown> | null) ??
     {};
 
-  const value = JSON.stringify({
+  const nextConfig: Record<string, unknown> = {
     ...existingConfig,
     rules: rules.map((r) => ({
       weightMinGrams: r.weightMinGrams,
@@ -64,7 +67,17 @@ export async function syncShippingRulesMetafield(
       feePercent: r.feePercent?.toString() ?? null,
       priority: r.priority,
     })),
-  });
+  };
+
+  if (options?.feeVariantId !== undefined) {
+    if (options.feeVariantId === null || options.feeVariantId.trim() === "") {
+      delete nextConfig.feeVariantId;
+    } else {
+      nextConfig.feeVariantId = options.feeVariantId.trim();
+    }
+  }
+
+  const value = JSON.stringify(nextConfig);
 
   const setRes = await admin.graphql(
     `#graphql
