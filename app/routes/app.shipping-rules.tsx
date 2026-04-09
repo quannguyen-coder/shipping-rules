@@ -13,6 +13,7 @@ import {
   toRuleJson,
   type RuleJson,
 } from "../lib/shipping-rules-validation.server";
+import { syncShippingRulesMetafield } from "../lib/sync-shipping-rules-metafield.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -38,7 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 type ActionErrors = Record<string, string>;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
   const intent = String(formData.get("_intent") ?? "");
@@ -60,6 +61,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return { errors: { form: "Rule not found." } satisfies ActionErrors };
     }
     await prisma.shippingRule.delete({ where: { id } });
+    try {
+      await syncShippingRulesMetafield(admin, shop);
+    } catch (err) {
+      return {
+        errors: {
+          form: `Rule deleted, but metafield sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
     return redirect("/app/shipping-rules");
   }
 
@@ -168,6 +178,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "create") {
     await prisma.shippingRule.create({ data });
+    try {
+      await syncShippingRulesMetafield(admin, shop);
+    } catch (err) {
+      return {
+        errors: {
+          form: `Rule created, but metafield sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
     return redirect("/app/shipping-rules");
   }
 
@@ -180,6 +199,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     where: { id },
     data,
   });
+  try {
+    await syncShippingRulesMetafield(admin, shop);
+  } catch (err) {
+    return {
+      errors: {
+        form: `Rule updated, but metafield sync failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    };
+  }
   return redirect("/app/shipping-rules");
 };
 

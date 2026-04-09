@@ -1,0 +1,19 @@
+query CartTransformRunInput {
+  cart {
+    metafield(namespace: "$app", key: "shipping_rules_config") {
+      jsonValue
+    }
+    lines {
+      id
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          weight
+          weightUnit
+        }
+      }
+    }
+  }
+}

@@ -44,6 +44,14 @@ description = "Tracks products created by the Shopify app template for developme
   [product.metafields.app.demo_info.access]
   admin = "merchant_read_write"
 
+[shop.metafields.app.shipping_rules_config]
+type = "json"
+name = "Shipping Rules Config"
+description = "Published shipping surcharge rules and cart transform settings"
+
+  [shop.metafields.app.shipping_rules_config.access]
+  admin = "merchant_read_write"
+
 [metaobjects.app.example]
 name = "Example"
 description = "An example metaobject definition created by this template"

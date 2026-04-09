@@ -1,0 +1,21 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "t:name"
+handle = "cart-weight-surcharge"
+type = "function"
+uid = "6987cdbb-7d01-9335-bc19-f212633af0301a1e31c9"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.transform.run"
+  input_query = "src/cart_transform_run.graphql"
+  export = "cart-transform-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+
+  [extensions.ui.paths]
+  create = "/"
+  details = "/"
