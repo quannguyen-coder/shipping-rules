@@ -2,7 +2,7 @@
 
 client_id = "0810683969c73d17b6d024ca3a99572a"
 name = "Shipping Rules"
-application_url = "https://slearning-2.myshopify.com"
+application_url = "https://shipping-rules-ypwo.onrender.com"
 embedded = true
 
 [build]
@@ -23,7 +23,7 @@ api_version = "2026-04"
 # Proxy target must be the same public base URL as your running app (tunnel in dev).
 # If this does not match application_url, /apps/shipping-rules/* on the storefront often returns 500.
 [app_proxy]
-url = "https://slearning-2.myshopify.com"
+url = "https://shipping-rules-ypwo.onrender.com"
 prefix = "apps"
 subpath = "shipping-rules"
 
