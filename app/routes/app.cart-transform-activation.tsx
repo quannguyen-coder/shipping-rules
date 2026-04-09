@@ -190,9 +190,9 @@ export default function CartTransformActivationPage() {
               label="Or paste Function ID manually"
               placeholder="gid://shopify/ShopifyFunction/..."
             />
-            <s-button type="submit" name="_intent" value="activate" variant="primary">
+            <button type="submit" name="_intent" value="activate">
               Activate
-            </s-button>
+            </button>
           </s-stack>
         </Form>
       </s-section>
