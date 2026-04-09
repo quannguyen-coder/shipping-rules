@@ -72,7 +72,3 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   );
 };
 
-/** Satisfies React Router when the document shell is rendered for this path. */
-export default function PublishedShippingRules() {
-  return null;
-}
