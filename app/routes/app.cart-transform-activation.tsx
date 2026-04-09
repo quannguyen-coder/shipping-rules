@@ -17,64 +17,73 @@ type ShopifyFunctionNode = {
 type LoaderData = {
   transforms: CartTransformNode[];
   functions: ShopifyFunctionNode[];
+  loaderError?: string;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-
-  const transformsRes = await admin.graphql(
-    `#graphql
-      query CartTransformsList {
-        cartTransforms(first: 20) {
-          nodes {
-            id
-            functionId
-            blockOnFailure
-          }
-        }
-      }`,
-  );
-  const transformsJson = (await transformsRes.json()) as {
-    data?: {
-      cartTransforms?: {
-        nodes?: CartTransformNode[];
-      };
-    };
-  };
-
-  let functions: ShopifyFunctionNode[] = [];
   try {
-    const functionsRes = await admin.graphql(
+    const { admin } = await authenticate.admin(request);
+
+    const transformsRes = await admin.graphql(
       `#graphql
-        query ShopifyFunctionsList {
-          shopifyFunctions(first: 100) {
+        query CartTransformsList {
+          cartTransforms(first: 20) {
             nodes {
               id
-              title
-              apiType
+              functionId
+              blockOnFailure
             }
           }
         }`,
     );
-    const functionsJson = (await functionsRes.json()) as {
+    const transformsJson = (await transformsRes.json()) as {
       data?: {
-        shopifyFunctions?: {
-          nodes?: ShopifyFunctionNode[];
+        cartTransforms?: {
+          nodes?: CartTransformNode[];
         };
       };
     };
-    functions = (functionsJson.data?.shopifyFunctions?.nodes ?? []).filter(
-      (node) => node.apiType === "cart_transform",
-    );
-  } catch {
-    // Fallback: some shops/api versions may not expose shopifyFunctions query.
-    functions = [];
-  }
 
-  return {
-    transforms: transformsJson.data?.cartTransforms?.nodes ?? [],
-    functions,
-  } satisfies LoaderData;
+    let functions: ShopifyFunctionNode[] = [];
+    try {
+      const functionsRes = await admin.graphql(
+        `#graphql
+          query ShopifyFunctionsList {
+            shopifyFunctions(first: 100) {
+              nodes {
+                id
+                title
+                apiType
+              }
+            }
+          }`,
+      );
+      const functionsJson = (await functionsRes.json()) as {
+        data?: {
+          shopifyFunctions?: {
+            nodes?: ShopifyFunctionNode[];
+          };
+        };
+      };
+      functions = (functionsJson.data?.shopifyFunctions?.nodes ?? []).filter(
+        (node) => node.apiType === "cart_transform",
+      );
+    } catch {
+      // Fallback: some shops/api versions may not expose shopifyFunctions query.
+      functions = [];
+    }
+
+    return {
+      transforms: transformsJson.data?.cartTransforms?.nodes ?? [],
+      functions,
+    } satisfies LoaderData;
+  } catch (err) {
+    return {
+      transforms: [],
+      functions: [],
+      loaderError: err instanceof Error ? err.message : String(err),
+    } satisfies LoaderData;
+  }
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -83,7 +92,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = String(formData.get("_intent") ?? "");
 
   if (intent === "activate") {
-    const functionId = String(formData.get("functionId") ?? "").trim();
+    const selectedFunctionId = String(formData.get("selectedFunctionId") ?? "").trim();
+    const manualFunctionId = String(formData.get("manualFunctionId") ?? "").trim();
+    const functionId = manualFunctionId || selectedFunctionId;
     if (!functionId) {
       return { ok: false, error: "Function ID is required." };
     }
@@ -166,7 +177,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function CartTransformActivationPage() {
-  const { transforms, functions } = useLoaderData<typeof loader>();
+  const { transforms, functions, loaderError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -177,7 +188,7 @@ export default function CartTransformActivationPage() {
         </s-paragraph>
         <Form method="post">
           <s-stack direction="block" gap="base">
-            <s-select name="functionId" label="Function ID (detected cart_transform functions)">
+            <s-select name="selectedFunctionId" label="Function ID (detected cart_transform functions)">
               <option value="">Select function id...</option>
               {functions.map((fn) => (
                 <option key={fn.id} value={fn.id}>
@@ -186,7 +197,7 @@ export default function CartTransformActivationPage() {
               ))}
             </s-select>
             <s-text-field
-              name="functionId"
+              name="manualFunctionId"
               label="Or paste Function ID manually"
               placeholder="gid://shopify/ShopifyFunction/..."
             />
@@ -225,6 +236,13 @@ export default function CartTransformActivationPage() {
       {actionData && "error" in actionData && actionData.error ? (
         <s-section>
           <s-text tone="critical">{actionData.error}</s-text>
+        </s-section>
+      ) : null}
+      {loaderError ? (
+        <s-section>
+          <s-text tone="critical">
+            Failed to load cart transform data: {loaderError}
+          </s-text>
         </s-section>
       ) : null}
       {actionData && "message" in actionData && actionData.message ? (
