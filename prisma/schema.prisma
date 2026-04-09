@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+/// Weight-based surcharge rules per shop. Amounts are in the shop's presentment currency for flat fees.
+model ShippingRule {
+  id               String   @id @default(cuid())
+  shop             String
+  /// Inclusive lower bound (grams)
+  weightMinGrams   Int
+  /// Exclusive upper bound (grams), e.g. 5000 means weights strictly below 5000 g
+  weightMaxGrams   Int
+  /// Flat surcharge in major currency units (e.g. 2.00). Use OR feePercent, not both, enforced in app.
+  feeAmount        Decimal?
+  /// Percentage of base shipping (e.g. 10 = 10%). Use OR feeAmount.
+  feePercent       Decimal?
+  /// When multiple rules match, higher priority wins (if you allow overlap later).
+  priority         Int      @default(0)
+  enabled          Boolean  @default(true)
+  /// Only published rules are exposed to the storefront read path.
+  published        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([shop])
+  @@index([shop, published])
+}
