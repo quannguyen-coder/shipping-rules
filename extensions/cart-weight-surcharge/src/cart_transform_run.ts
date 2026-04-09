@@ -50,48 +50,18 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
 
   const matchedRule = findMatchingRule(totalGrams, config.rules);
   if (!matchedRule) {
-    return {
-      operations: [
-        {
-          update: {
-            cartLineId: feeLine.id,
-            title: "Shipping surcharge",
-            price: {
-              adjustment: {
-                fixedPricePerUnit: {
-                  amount: 0,
-                },
-              },
-            },
-          },
-        },
-      ],
-    };
+    return buildFeeUpdateResult(feeLine.id, 0);
   }
 
   // For percentage rules, Cart Transform doesn't know shipping base rate.
   // We currently apply only flat fee in this function path.
   const flatAmount = parseNumber(matchedRule.feeAmount);
   if (flatAmount == null || flatAmount < 0) {
-    return NO_CHANGES;
+    return buildFeeUpdateResult(feeLine.id, 0);
   }
 
   const perUnitAmount = flatAmount / feeLine.quantity;
-  const update: UpdateOperation = {
-    cartLineId: feeLine.id,
-    title: "Shipping surcharge",
-    price: {
-      adjustment: {
-        fixedPricePerUnit: {
-          amount: roundCurrency(perUnitAmount),
-        },
-      },
-    },
-  };
-
-  return {
-    operations: [{ update }],
-  };
+  return buildFeeUpdateResult(feeLine.id, roundCurrency(perUnitAmount));
 }
 
 type RulesConfig = {
@@ -159,6 +129,27 @@ function parseNumber(v: string | null): number | null {
 
 function roundCurrency(amount: number): number {
   return Math.round(amount * 100) / 100;
+}
+
+function buildFeeUpdateResult(
+  cartLineId: string,
+  amountPerUnit: number,
+): CartTransformRunResult {
+  const update: UpdateOperation = {
+    cartLineId,
+    title: "Shipping surcharge",
+    price: {
+      adjustment: {
+        fixedPricePerUnit: {
+          amount: amountPerUnit,
+        },
+      },
+    },
+  };
+
+  return {
+    operations: [{ update }],
+  };
 }
 
 function findMatchingRule(
