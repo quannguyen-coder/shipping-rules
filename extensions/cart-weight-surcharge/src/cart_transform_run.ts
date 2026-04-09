@@ -1,7 +1,7 @@
 import type {
   CartTransformRunInput,
   CartTransformRunResult,
-  UpdateOperation,
+  LineUpdateOperation,
   WeightUnit,
 } from "../generated/api";
 
@@ -135,7 +135,7 @@ function buildFeeUpdateResult(
   cartLineId: string,
   amountPerUnit: number,
 ): CartTransformRunResult {
-  const update: UpdateOperation = {
+  const lineUpdate: LineUpdateOperation = {
     cartLineId,
     title: "Shipping surcharge",
     price: {
@@ -148,7 +148,7 @@ function buildFeeUpdateResult(
   };
 
   return {
-    operations: [{ update }],
+    operations: [{ lineUpdate }],
   };
 }
 
