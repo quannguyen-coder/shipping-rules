@@ -23,6 +23,7 @@ type ShopifyCarrierRequest = {
   rate?: {
     items?: Array<{ grams?: number; quantity?: number }>;
     rates?: CarrierRate[];
+    currency?: string;
   };
 };
 
@@ -72,6 +73,31 @@ async function fetchBaseRates(
 
   const json = (await response.json()) as CarrierResponse;
   return Array.isArray(json?.rates) ? json.rates : [];
+}
+
+function getDefaultRates(payload: ShopifyCarrierRequest): CarrierRate[] {
+  const standardMajor = Number(process.env.DEFAULT_RATE_STANDARD ?? "3");
+  const expressMajor = Number(process.env.DEFAULT_RATE_EXPRESS ?? "7");
+  const currency = payload.rate?.currency || process.env.DEFAULT_RATE_CURRENCY || "USD";
+
+  const fallback = [
+    {
+      service_name: "Standard Shipping",
+      service_code: "SR_STANDARD",
+      total_price: toSubunits(Number.isFinite(standardMajor) ? standardMajor : 3),
+      currency,
+      description: "Fallback standard rate",
+    },
+    {
+      service_name: "Express Shipping",
+      service_code: "SR_EXPRESS",
+      total_price: toSubunits(Number.isFinite(expressMajor) ? expressMajor : 7),
+      currency,
+      description: "Fallback express rate",
+    },
+  ];
+
+  return fallback;
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -172,7 +198,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shop,
       error: err instanceof Error ? err.message : String(err),
     });
-    return Response.json({ rates: [] });
+    baseRates = [];
+  }
+
+  if (baseRates.length === 0) {
+    baseRates = getDefaultRates(payload);
+    logCarrierEvent("using_default_rates", {
+      requestId,
+      shop,
+      defaultRateCount: baseRates.length,
+    });
   }
 
   const rates = baseRates.map((rate) => {
