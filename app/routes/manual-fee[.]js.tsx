@@ -27,6 +27,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var CART_URL = ROOT + "cart.js";
   var ADD_URL = ROOT + "cart/add.js";
   var CHANGE_URL = ROOT + "cart/change.js";
+  var SECTION_IDS = [
+    "cart-drawer",
+    "cart-icon-bubble",
+    "main-cart-items",
+    "main-cart-footer",
+    "cart-live-region-text",
+  ];
   var DEBUG = true;
 
   function debugLog() {
@@ -98,6 +105,57 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return b.priority - a.priority;
     });
     return matches[0];
+  }
+
+  async function refreshCartUi() {
+    var replacedCount = 0;
+    try {
+      var params = new URLSearchParams();
+      params.set("sections", SECTION_IDS.join(","));
+      params.set("sections_url", window.location.pathname + window.location.search);
+      const sectionsRes = await fetch(ROOT + "?" + params.toString(), {
+        credentials: "same-origin",
+      });
+      if (!sectionsRes.ok) throw new Error("sections reload failed: " + sectionsRes.status);
+      const sections = await sectionsRes.json();
+      if (!sections || typeof sections !== "object") return;
+
+      Object.keys(sections).forEach(function (sectionId) {
+        var html = sections[sectionId];
+        if (typeof html !== "string") return;
+        var candidates = [];
+        var byId = document.getElementById("shopify-section-" + sectionId);
+        if (byId) candidates.push(byId);
+        document
+          .querySelectorAll('[id^="shopify-section-' + sectionId + '"], [data-section-id="' + sectionId + '"]')
+          .forEach(function (el) {
+            if (el instanceof HTMLElement && candidates.indexOf(el) === -1) candidates.push(el);
+          });
+        if (candidates.length === 0) return;
+
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        var parsedRoot = doc.getElementById("shopify-section-" + sectionId);
+        candidates.forEach(function (liveRoot) {
+          if (!(liveRoot instanceof HTMLElement)) return;
+          if (parsedRoot && liveRoot.parentNode) {
+            liveRoot.parentNode.replaceChild(parsedRoot.cloneNode(true), liveRoot);
+          } else {
+            liveRoot.innerHTML = html;
+          }
+          replacedCount += 1;
+        });
+      });
+    } catch (err) {
+      debugLog("refreshCartUi fallback via events", err);
+    } finally {
+      window.dispatchEvent(new CustomEvent("cart:refresh"));
+      window.dispatchEvent(new CustomEvent("cart:updated"));
+      window.dispatchEvent(new CustomEvent("shipping-rules:cart-refreshed"));
+      if (replacedCount === 0) {
+        debugLog("no section replaced, hard reload");
+        window.location.reload();
+      }
+    }
   }
 
   function hideFeeLineControls(feeVariantIdStr, feeLineKey, feeLineIndexOneBased) {
@@ -226,6 +284,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         debugLog("add success");
+        await refreshCartUi();
         return { ok: true, action: "added" };
       }
 
@@ -243,6 +302,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         debugLog("remove success");
+        await refreshCartUi();
         return { ok: true, action: "removed" };
       }
 
