@@ -58,6 +58,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return response.json();
   }
 
+  var addCooldownUntil = 0;
+  var debounceTimer = null;
+
+  function scheduleSyncFeeLine(delayMs) {
+    var d = typeof delayMs === "number" ? delayMs : 900;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      debounceTimer = null;
+      syncFeeLine();
+    }, d);
+  }
+
+  function flushSyncFeeLine() {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+    return syncFeeLine();
+  }
+
+  function bumpAddCooldown(ms) {
+    var until = Date.now() + ms;
+    if (until > addCooldownUntil) addCooldownUntil = until;
+  }
+
   /** Cart line counts toward surcharge context (matches storefront weight rules intent). */
   function lineQualifiesForFee(item, feeVariantIdStr) {
     if (!item || Number(item.quantity) <= 0) return false;
@@ -88,6 +111,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
 
       if (shouldHaveFeeLine && !feeLine) {
+        if (Date.now() < addCooldownUntil) {
+          return;
+        }
         var idForCart = variantIdForCartPayload(feeVariantIdStr);
         const addRes = await fetch(ADD_URL, {
           method: "POST",
@@ -99,14 +125,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         if (!addRes.ok) {
           var errText = await addRes.text();
+          var waitSec = 120;
           try {
             var errJson = JSON.parse(errText);
             console.warn("[shipping-rules] auto-fee: cart/add.js failed", addRes.status, errJson);
+            if (errJson && errJson.status === "too_many_requests") waitSec = 300;
           } catch (_) {
             console.warn("[shipping-rules] auto-fee: cart/add.js failed", addRes.status, errText);
           }
+          if (addRes.status === 429) waitSec = 300;
+          bumpAddCooldown(waitSec * 1000);
           return;
         }
+        addCooldownUntil = 0;
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         return;
       }
@@ -149,7 +180,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (submitName !== "checkout" && submitName !== "goto" && submitName !== "goto_pp") return;
       e.preventDefault();
       e.stopPropagation();
-      syncFeeLine().finally(function () {
+      flushSyncFeeLine().finally(function () {
         bypassCheckoutSubmitGuard = true;
         try {
           if (typeof form.requestSubmit === "function") {
@@ -178,28 +209,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       e.preventDefault();
       e.stopPropagation();
       const dest = a.href;
-      syncFeeLine().finally(function () {
+      flushSyncFeeLine().finally(function () {
         window.location.assign(dest);
       });
     },
     true,
   );
 
-  syncFeeLine();
+  scheduleSyncFeeLine(250);
   window.addEventListener("pageshow", function () {
-    syncFeeLine();
+    scheduleSyncFeeLine(400);
   });
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") syncFeeLine();
+    if (document.visibilityState === "visible") scheduleSyncFeeLine(600);
   });
   document.addEventListener("shopify:section:load", function () {
-    syncFeeLine();
+    scheduleSyncFeeLine();
   });
   document.addEventListener("cart:updated", function () {
-    syncFeeLine();
+    scheduleSyncFeeLine();
   });
   document.addEventListener("ajaxProduct:added", function () {
-    syncFeeLine();
+    scheduleSyncFeeLine();
   });
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
@@ -214,8 +245,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (isCartPath()) {
     var feeCartPoll = window.setInterval(function () {
-      syncFeeLine();
-    }, 3000);
+      scheduleSyncFeeLine(0);
+    }, 60000);
     window.addEventListener("pagehide", function () {
       window.clearInterval(feeCartPoll);
     });
