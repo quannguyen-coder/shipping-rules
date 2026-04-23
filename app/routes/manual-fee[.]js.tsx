@@ -148,6 +148,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       });
     }
+
+    // Dawn cart drawer/cart table: hide the full quantity cell for fee line.
+    var feeQtyInputs = document.querySelectorAll(
+      'input[data-quantity-variant-id="' + feeVariantIdStr + '"]',
+    );
+    feeQtyInputs.forEach(function (input) {
+      if (!(input instanceof HTMLElement)) return;
+      var row = input.closest("tr.cart-item");
+      if (!(row instanceof HTMLElement)) return;
+      var qtyCell = row.querySelector("td.cart-item__quantity");
+      if (qtyCell instanceof HTMLElement) {
+        qtyCell.style.setProperty("display", "none", "important");
+        qtyCell.setAttribute("aria-hidden", "true");
+      }
+    });
   }
 
   async function shippingRulesManualSyncFeeLine() {
