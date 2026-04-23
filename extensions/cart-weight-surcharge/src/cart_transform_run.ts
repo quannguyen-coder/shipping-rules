@@ -14,6 +14,7 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
   if (!config || !config.feeVariantId || config.rules.length === 0) {
     return NO_CHANGES;
   }
+  const feeVariantNumeric = variantIdNumericFromGid(config.feeVariantId);
 
   let feeLine:
     | {
@@ -29,7 +30,13 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     const merchandise = line.merchandise;
     if (merchandise.__typename !== "ProductVariant") continue;
 
-    if (merchandise.id === config.feeVariantId) {
+    const lineVariantNumeric = variantIdNumericFromGid(merchandise.id);
+    if (
+      merchandise.id === config.feeVariantId ||
+      (feeVariantNumeric != null &&
+        lineVariantNumeric != null &&
+        lineVariantNumeric === feeVariantNumeric)
+    ) {
       feeLine = { id: line.id, quantity: line.quantity };
       continue;
     }
@@ -162,17 +169,32 @@ function roundCurrency(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
+function decimalString(amount: number): string {
+  return roundCurrency(amount).toFixed(2);
+}
+
+function variantIdNumericFromGid(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (/^[0-9]+$/.test(id)) return id;
+  const raw = id.split("/").pop();
+  if (!raw) return null;
+  const cleaned = raw.split("?")[0];
+  return /^[0-9]+$/.test(cleaned) ? cleaned : null;
+}
+
 function buildFeeUpdateResult(
   cartLineId: string,
   amountPerUnit: number,
 ): CartTransformRunResult {
+  const decimalAmount = decimalString(amountPerUnit);
   const lineUpdate: LineUpdateOperation = {
     cartLineId,
     title: "Shipping surcharge",
     price: {
       adjustment: {
         fixedPricePerUnit: {
-          amount: amountPerUnit,
+          // Runtime expects a Decimal-compatible value.
+          amount: decimalAmount as unknown as number,
         },
       },
     },
