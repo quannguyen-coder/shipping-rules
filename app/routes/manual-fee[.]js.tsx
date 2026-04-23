@@ -89,7 +89,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(priority)) {
           return null;
         }
-        return { weightMinGrams: min, weightMaxGrams: max, priority: priority };
+        return {
+          weightMinGrams: min,
+          weightMaxGrams: max,
+          priority: priority,
+          feeAmount:
+            typeof r.feeAmount === "string" || r.feeAmount === null ? r.feeAmount : null,
+          feePercent:
+            typeof r.feePercent === "string" || r.feePercent === null ? r.feePercent : null,
+        };
       })
       .filter(function (r) {
         return r != null;
@@ -105,6 +113,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return b.priority - a.priority;
     });
     return matches[0];
+  }
+
+  function parseRuleNumber(v) {
+    if (v == null || v === "") return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function lineSubtotalFromCartItem(item) {
+    if (!item) return 0;
+    var cents = Number(item.final_line_price);
+    if (!Number.isFinite(cents)) cents = Number(item.line_price);
+    if (!Number.isFinite(cents)) return 0;
+    return cents / 100;
+  }
+
+  function calculatedFeeTotal(matchedRule, qualifyingLines) {
+    if (!matchedRule) return 0;
+    var amount = parseRuleNumber(matchedRule.feeAmount);
+    if (amount != null) return Math.max(0, amount);
+    var pct = parseRuleNumber(matchedRule.feePercent);
+    if (pct != null && pct > 0) {
+      var subtotal = qualifyingLines.reduce(function (sum, item) {
+        return sum + lineSubtotalFromCartItem(item);
+      }, 0);
+      return (subtotal * pct) / 100;
+    }
+    return 0;
   }
 
   async function refreshCartUi() {
@@ -237,7 +273,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         return sum + Math.max(0, Number(item.grams) || 0) * Math.max(0, Number(item.quantity) || 0);
       }, 0);
       const matchedRule = findMatchingRule(totalGrams, rules);
-      const shouldHaveFeeLine = qualifyingLines.length > 0 && !!matchedRule;
+      const feeTotal = calculatedFeeTotal(matchedRule, qualifyingLines);
+      const shouldHaveFeeLine = qualifyingLines.length > 0 && feeTotal > 0;
       if (feeLine) {
         hideFeeLineControls(feeVariantIdStr, feeLine.key || null, feeLineIndex);
       }
@@ -247,6 +284,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shouldHaveFeeLine: shouldHaveFeeLine,
         totalGrams: totalGrams,
         matchedRule: matchedRule,
+        feeTotal: feeTotal,
         lineSummaries: items.map((item) => ({
           id: item?.id,
           key: item?.key,
