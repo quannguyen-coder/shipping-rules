@@ -27,6 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var ADD_URL = ROOT + "cart/add.js";
   var CHANGE_URL = ROOT + "cart/change.js";
   var CONFIG_TTL_MS = 15000;
+  var CART_TTL_MS = 1200;
   var SECTION_IDS = [
     "cart-drawer",
     "cart-icon-bubble",
@@ -82,6 +83,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var cachedConfig = null;
   var cachedConfigFetchedAt = 0;
   var configInFlight = null;
+  var cachedCart = null;
+  var cachedCartFetchedAt = 0;
+  var cartInFlight = null;
 
   async function getPublishedConfig(force) {
     var now = Date.now();
@@ -98,6 +102,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         configInFlight = null;
       });
     return configInFlight;
+  }
+
+  function captureCartSnapshot(maybeCart) {
+    if (!maybeCart || typeof maybeCart !== "object") return false;
+    if (!Array.isArray(maybeCart.items)) return false;
+    cachedCart = maybeCart;
+    cachedCartFetchedAt = Date.now();
+    return true;
+  }
+
+  async function getCartSnapshot(force) {
+    var now = Date.now();
+    var isFresh = cachedCart && now - cachedCartFetchedAt < CART_TTL_MS;
+    if (!force && isFresh) return cachedCart;
+    if (cartInFlight) return cartInFlight;
+    cartInFlight = getJson(CART_URL, { credentials: "same-origin" })
+      .then(function (cart) {
+        captureCartSnapshot(cart);
+        return cart;
+      })
+      .finally(function () {
+        cartInFlight = null;
+      });
+    return cartInFlight;
   }
 
   var addCooldownUntil = 0;
@@ -310,8 +338,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     debugLog("fast sync trigger", { reason: reason });
     scheduleSyncFeeLine(0);
     setTimeout(function () {
-      scheduleSyncFeeLine(90);
-    }, 90);
+      scheduleSyncFeeLine(60);
+    }, 60);
   }
 
   function isCartMutationUrl(urlLike) {
@@ -338,7 +366,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         var url = typeof input === "string" ? input : input && input.url;
         var shouldWatch = isCartMutationUrl(url);
         return originalFetch(input, init).then(function (res) {
-          if (shouldWatch && res && res.ok) maybeFastSync("fetch:" + url);
+          if (shouldWatch && res && res.ok) {
+            try {
+              res
+                .clone()
+                .json()
+                .then(function (payload) {
+                  captureCartSnapshot(payload);
+                })
+                .catch(function () {
+                  /* mutation may not return full cart shape */
+                });
+            } catch (_) {
+              /* ignore clone/parse errors */
+            }
+            // cart changed; mark stale so next sync refetches if no snapshot captured.
+            cachedCartFetchedAt = 0;
+            maybeFastSync("fetch:" + url);
+          }
           return res;
         });
       };
@@ -356,7 +401,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     XHR.prototype.send = function () {
       if (this.__shippingRulesCartWatch) {
         this.addEventListener("loadend", function () {
-          if (this.status >= 200 && this.status < 300) maybeFastSync("xhr");
+          if (this.status >= 200 && this.status < 300) {
+            cachedCartFetchedAt = 0;
+            maybeFastSync("xhr");
+          }
         });
       }
       return origSend.apply(this, arguments);
@@ -377,7 +425,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         return;
       }
 
-      const cart = await getJson(CART_URL, { credentials: "same-origin" });
+      const cart = await getCartSnapshot(false);
       const items = Array.isArray(cart?.items) ? cart.items : [];
       const rules = parseRules(config?.rules);
 
@@ -443,6 +491,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         addCooldownUntil = 0;
         debugLog("add success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
+        cachedCartFetchedAt = 0;
         refreshCartUi();
         return;
       }
@@ -461,6 +510,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         debugLog("remove success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
+        cachedCartFetchedAt = 0;
         refreshCartUi();
       } else {
         debugLog("no change needed");
