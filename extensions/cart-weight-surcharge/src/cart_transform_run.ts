@@ -8,8 +8,8 @@ import type {
 const NO_CHANGES: CartTransformRunResult = {
   operations: [],
 };
-// TEMP DEBUG SWITCH: set true to force a visible line update.
-const DEBUG_HARD_MODE = true;
+// TEMP DEBUG SWITCH: keep false in normal behavior.
+const DEBUG_HARD_MODE = false;
 
 export function cartTransformRun(input: CartTransformRunInput): CartTransformRunResult {
   const config = parseConfig(input);
@@ -174,10 +174,6 @@ function roundCurrency(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
-function decimalString(amount: number): string {
-  return roundCurrency(amount).toFixed(2);
-}
-
 function variantIdNumericFromGid(id: string | null | undefined): string | null {
   if (!id) return null;
   if (/^[0-9]+$/.test(id)) return id;
@@ -192,15 +188,13 @@ function buildFeeUpdateResult(
   amountPerUnit: number,
   title = "Shipping surcharge",
 ): CartTransformRunResult {
-  const decimalAmount = decimalString(amountPerUnit);
   const lineUpdate: LineUpdateOperation = {
     cartLineId,
     title,
     price: {
       adjustment: {
         fixedPricePerUnit: {
-          // Runtime expects a Decimal-compatible value.
-          amount: decimalAmount as unknown as number,
+          amount: roundCurrency(amountPerUnit),
         },
       },
     },
