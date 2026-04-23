@@ -71,11 +71,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return false;
   }
 
+  function parseRules(rawRules) {
+    if (!Array.isArray(rawRules)) return [];
+    return rawRules
+      .map(function (r) {
+        if (!r || typeof r !== "object") return null;
+        var min = Number(r.weightMinGrams);
+        var max = Number(r.weightMaxGrams);
+        var priority = Number(r.priority || 0);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(priority)) {
+          return null;
+        }
+        return { weightMinGrams: min, weightMaxGrams: max, priority: priority };
+      })
+      .filter(function (r) {
+        return r != null;
+      });
+  }
+
+  function findMatchingRule(totalGrams, rules) {
+    var matches = rules.filter(function (r) {
+      return totalGrams >= r.weightMinGrams && totalGrams < r.weightMaxGrams;
+    });
+    if (matches.length === 0) return null;
+    matches.sort(function (a, b) {
+      return b.priority - a.priority;
+    });
+    return matches[0];
+  }
+
   async function shippingRulesManualSyncFeeLine() {
     try {
       debugLog("sync start");
       const config = await getJson(CONFIG_URL, { credentials: "same-origin" });
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
+      const rules = parseRules(config?.rules);
       debugLog("config loaded", {
         feeVariantId: config?.feeVariantId || null,
         feeVariantIdNumeric: feeVariantIdStr,
@@ -90,13 +120,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const items = Array.isArray(cart?.items) ? cart.items : [];
 
       const feeLine = items.find((item) => String(item.id) === feeVariantIdStr) || null;
-      const shouldHaveFeeLine = items.some((item) =>
+      const qualifyingLines = items.filter((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
+      const totalGrams = qualifyingLines.reduce(function (sum, item) {
+        return sum + Math.max(0, Number(item.grams) || 0) * Math.max(0, Number(item.quantity) || 0);
+      }, 0);
+      const matchedRule = findMatchingRule(totalGrams, rules);
+      const shouldHaveFeeLine = qualifyingLines.length > 0 && !!matchedRule;
       debugLog("cart snapshot", {
         itemCount: items.length,
         feeLinePresent: !!feeLine,
         shouldHaveFeeLine: shouldHaveFeeLine,
+        totalGrams: totalGrams,
+        matchedRule: matchedRule,
         lineSummaries: items.map((item) => ({
           id: item?.id,
           key: item?.key,

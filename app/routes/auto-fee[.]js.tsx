@@ -104,6 +104,65 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return false;
   }
 
+  function parseRules(rawRules) {
+    if (!Array.isArray(rawRules)) return [];
+    return rawRules
+      .map(function (r) {
+        if (!r || typeof r !== "object") return null;
+        var min = Number(r.weightMinGrams);
+        var max = Number(r.weightMaxGrams);
+        var priority = Number(r.priority || 0);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(priority)) {
+          return null;
+        }
+        return {
+          weightMinGrams: min,
+          weightMaxGrams: max,
+          priority: priority,
+        };
+      })
+      .filter(function (r) {
+        return r != null;
+      });
+  }
+
+  function findMatchingRule(totalGrams, rules) {
+    var matches = rules.filter(function (r) {
+      return totalGrams >= r.weightMinGrams && totalGrams < r.weightMaxGrams;
+    });
+    if (matches.length === 0) return null;
+    matches.sort(function (a, b) {
+      return b.priority - a.priority;
+    });
+    return matches[0];
+  }
+
+  function hideFeeLineControls(feeVariantIdStr, feeLineKey) {
+    if (typeof document === "undefined") return;
+    if (!feeVariantIdStr) return;
+    var marker = feeLineKey || feeVariantIdStr;
+
+    var roots = document.querySelectorAll(
+      ".cart-item, .cart__item, [data-cart-item], [data-cart-item-key], [data-line-item-key], tr, li, [id*='CartItem']",
+    );
+    roots.forEach(function (root) {
+      if (!(root instanceof HTMLElement)) return;
+      var html = root.outerHTML || "";
+      if (html.indexOf(marker) === -1 && html.indexOf(feeVariantIdStr) === -1) return;
+      var controls = root.querySelectorAll(
+        'input[name^="updates"], input[type="number"], button[name="minus"], button[name="plus"], button[name="remove"], [data-quantity-input], [data-quantity-selector], a[href*="/cart/change"], a[href*="line="]',
+      );
+      controls.forEach(function (el) {
+        if (!(el instanceof HTMLElement)) return;
+        el.style.display = "none";
+        el.setAttribute("aria-hidden", "true");
+        if ("disabled" in el) {
+          el.disabled = true;
+        }
+      });
+    });
+  }
+
   let syncQueue = Promise.resolve();
 
   async function runSyncOnce() {
@@ -122,15 +181,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       const cart = await getJson(CART_URL, { credentials: "same-origin" });
       const items = Array.isArray(cart?.items) ? cart.items : [];
+      const rules = parseRules(config?.rules);
 
       const feeLine = items.find((item) => String(item.id) === feeVariantIdStr) || null;
-      const shouldHaveFeeLine = items.some((item) =>
+      const qualifyingLines = items.filter((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
+      const totalGrams = qualifyingLines.reduce(function (sum, item) {
+        return sum + Math.max(0, Number(item.grams) || 0) * Math.max(0, Number(item.quantity) || 0);
+      }, 0);
+      const matchedRule = findMatchingRule(totalGrams, rules);
+      const shouldHaveFeeLine = qualifyingLines.length > 0 && !!matchedRule;
+      if (feeLine) {
+        hideFeeLineControls(feeVariantIdStr, feeLine.key || null);
+      }
       debugLog("sync snapshot", {
         itemCount: items.length,
         feeLinePresent: !!feeLine,
         shouldHaveFeeLine: shouldHaveFeeLine,
+        totalGrams: totalGrams,
+        matchedRule: matchedRule,
         cooldownRemainingMs: Math.max(0, addCooldownUntil - Date.now()),
       });
 
