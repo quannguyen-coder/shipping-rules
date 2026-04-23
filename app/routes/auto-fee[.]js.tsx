@@ -279,6 +279,67 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   let syncQueue = Promise.resolve();
+  var lastFastSyncAt = 0;
+
+  function maybeFastSync(reason) {
+    var now = Date.now();
+    if (now - lastFastSyncAt < 120) return;
+    lastFastSyncAt = now;
+    debugLog("fast sync trigger", { reason: reason });
+    scheduleSyncFeeLine(0);
+    setTimeout(function () {
+      scheduleSyncFeeLine(90);
+    }, 90);
+  }
+
+  function isCartMutationUrl(urlLike) {
+    if (!urlLike) return false;
+    try {
+      var u = new URL(String(urlLike), window.location.origin);
+      var p = (u.pathname || "").toLowerCase();
+      return (
+        p.endsWith("/cart/add.js") ||
+        p.endsWith("/cart/change.js") ||
+        p.endsWith("/cart/update.js") ||
+        p.endsWith("/cart/clear.js")
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function installCartMutationHooks() {
+    // Hook fetch for immediate post-mutation sync.
+    if (typeof window.fetch === "function") {
+      var originalFetch = window.fetch.bind(window);
+      window.fetch = function (input, init) {
+        var url = typeof input === "string" ? input : input && input.url;
+        var shouldWatch = isCartMutationUrl(url);
+        return originalFetch(input, init).then(function (res) {
+          if (shouldWatch && res && res.ok) maybeFastSync("fetch:" + url);
+          return res;
+        });
+      };
+    }
+
+    // Hook XHR for themes that still use XMLHttpRequest.
+    var XHR = window.XMLHttpRequest;
+    if (!XHR || !XHR.prototype) return;
+    var origOpen = XHR.prototype.open;
+    var origSend = XHR.prototype.send;
+    XHR.prototype.open = function (method, url) {
+      this.__shippingRulesCartWatch = isCartMutationUrl(url);
+      return origOpen.apply(this, arguments);
+    };
+    XHR.prototype.send = function () {
+      if (this.__shippingRulesCartWatch) {
+        this.addEventListener("loadend", function () {
+          if (this.status >= 200 && this.status < 300) maybeFastSync("xhr");
+        });
+      }
+      return origSend.apply(this, arguments);
+    };
+  }
 
   async function runSyncOnce() {
     try {
@@ -466,10 +527,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (!(t instanceof Element)) return;
     var qtyBtn = t.closest(".quantity__button, button[name='plus'], button[name='minus']");
     if (!qtyBtn) return;
-    scheduleSyncFeeLine(0);
-    setTimeout(function () {
-      scheduleSyncFeeLine(120);
-    }, 120);
+    maybeFastSync("qty-button");
   });
   document.addEventListener("change", function (e) {
     var t = e.target;
@@ -479,11 +537,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       t.matches("input.quantity__input") ||
       t.matches('input[data-quantity-variant-id]');
     if (!isQtyInput) return;
-    scheduleSyncFeeLine(0);
-    setTimeout(function () {
-      scheduleSyncFeeLine(120);
-    }, 120);
+    maybeFastSync("qty-input");
   });
+  installCartMutationHooks();
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
   function isCartPath() {
