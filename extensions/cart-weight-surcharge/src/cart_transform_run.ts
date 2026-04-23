@@ -90,7 +90,14 @@ type RulesConfig = {
 };
 
 function parseConfig(input: CartTransformRunInput): RulesConfig | null {
-  const raw = input.shop.metafield?.jsonValue as unknown;
+  let raw = input.shop.metafield?.jsonValue as unknown;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
   if (!raw || typeof raw !== "object") return null;
   const maybe = raw as {
     rules?: unknown;
