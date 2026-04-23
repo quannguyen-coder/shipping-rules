@@ -387,13 +387,17 @@ export default function CartTransformSettingsPage() {
           already be in the cart. Load the app-proxy script on the storefront (for
           example at the end of <s-text type="strong">theme.liquid</s-text>): a script
           tag with <s-text type="strong">src="/apps/shipping-rules/auto-fee.js"</s-text>{" "}
-          and <s-text type="strong">defer</s-text>. The hosted checkout page does{" "}
+          and <s-text type="strong">defer</s-text>. For a one-off test without auto
+          behavior, add{" "}
+          <s-text type="strong">src="/apps/shipping-rules/manual-fee.js"</s-text>{" "}
+          with <s-text type="strong">defer</s-text>, then in the browser console run{" "}
+          <s-text type="strong">await shippingRulesManualSyncFeeLine()</s-text>. The hosted checkout page does{" "}
           <s-text type="strong">not</s-text> load <s-text type="strong">theme.liquid</s-text>
           , so you will not see this script on checkout—that is normal. What matters is
           that <s-text type="strong">/cart.js</s-text> lists the fee variant before you
           leave the storefront. On the <s-text type="strong">/cart</s-text> page the
-          script also polls every few seconds so accelerated checkout buttons still see
-          an updated cart. Catalog variants should have shipping enabled or a positive
+          auto script also re-checks about every 60 seconds so accelerated checkout buttons can
+          see an updated cart. Catalog variants should have shipping enabled or a positive
           weight so the fee line is added.
         </s-paragraph>
         <s-paragraph>
