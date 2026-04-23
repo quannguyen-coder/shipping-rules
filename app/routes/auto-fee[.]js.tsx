@@ -18,11 +18,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const ADD_URL = "/cart/add.js";
   const CHANGE_URL = "/cart/change.js";
 
-  function toVariantNumericId(gid) {
+  /**
+   * Numeric id from ProductVariant GID, kept as string so large Snowflake ids are not
+   * rounded by JavaScript Number (which breaks /cart/add.js with "Cannot find variant").
+   */
+  function gidToVariantIdString(gid) {
     if (!gid || typeof gid !== "string") return null;
     const raw = gid.split("/").pop();
-    const id = Number(raw);
-    return Number.isFinite(id) ? id : null;
+    if (!raw || !/^[0-9]+$/.test(raw)) return null;
+    return raw;
   }
 
   async function getJson(url, init) {
@@ -32,9 +36,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   /** Cart line counts toward surcharge context (matches storefront weight rules intent). */
-  function lineQualifiesForFee(item, feeVariantNumericId) {
+  function lineQualifiesForFee(item, feeVariantIdStr) {
     if (!item || Number(item.quantity) <= 0) return false;
-    if (Number(item.id) === feeVariantNumericId) return false;
+    if (String(item.id) === feeVariantIdStr) return false;
     if (item.requires_shipping === true) return true;
     const grams = Number(item.grams);
     if (Number.isFinite(grams) && grams > 0) return true;
@@ -46,8 +50,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   async function runSyncOnce() {
     try {
       const config = await getJson(CONFIG_URL, { credentials: "same-origin" });
-      const feeVariantNumericId = toVariantNumericId(config?.feeVariantId);
-      if (!feeVariantNumericId) {
+      const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
+      if (!feeVariantIdStr) {
         console.warn("[shipping-rules] auto-fee: missing feeVariantId in app proxy config");
         return;
       }
@@ -55,20 +59,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const cart = await getJson(CART_URL, { credentials: "same-origin" });
       const items = Array.isArray(cart?.items) ? cart.items : [];
 
-      const feeLine = items.find((item) => Number(item.id) === feeVariantNumericId) || null;
+      const feeLine = items.find((item) => String(item.id) === feeVariantIdStr) || null;
       const shouldHaveFeeLine = items.some((item) =>
-        lineQualifiesForFee(item, feeVariantNumericId),
+        lineQualifiesForFee(item, feeVariantIdStr),
       );
 
       if (shouldHaveFeeLine && !feeLine) {
-        await fetch(ADD_URL, {
+        const addRes = await fetch(ADD_URL, {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            items: [{ id: feeVariantNumericId, quantity: 1 }],
+            items: [{ id: feeVariantIdStr, quantity: 1 }],
           }),
         });
+        if (!addRes.ok) {
+          var errText = await addRes.text();
+          try {
+            var errJson = JSON.parse(errText);
+            console.warn("[shipping-rules] auto-fee: cart/add.js failed", addRes.status, errJson);
+          } catch (_) {
+            console.warn("[shipping-rules] auto-fee: cart/add.js failed", addRes.status, errText);
+          }
+          return;
+        }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         return;
       }
@@ -79,7 +93,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: feeVariantNumericId,
+            id: feeVariantIdStr,
             quantity: 0,
           }),
         });
