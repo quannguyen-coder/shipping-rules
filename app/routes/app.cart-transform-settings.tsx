@@ -269,13 +269,15 @@ export default function CartTransformSettingsPage() {
           to the selected shipping method.
         </s-paragraph>
         <s-paragraph>
-          Add the theme script so the fee variant is present when checkout runs the
-          transform:{" "}
-          <s-text type="strong">
-            /apps/shipping-rules/auto-fee.js
-          </s-text>{" "}
-          (see App proxy). Publish rules and set a dedicated fee product variant
-          priced at $0 in Admin.
+          Cart Transform cannot add the fee line by itself—the fee variant must
+          already be in the cart. Load the app-proxy script on the storefront (for
+          example at the end of <s-text type="strong">theme.liquid</s-text>): a script
+          tag with <s-text type="strong">src="/apps/shipping-rules/auto-fee.js"</s-text>{" "}
+          and <s-text type="strong">defer</s-text>. Checkout submits and checkout links
+          are delayed until the fee line sync runs. If surcharge is still missing, open{" "}
+          <s-text type="strong">/cart.js</s-text> and confirm the fee variant is listed
+          before you pay; catalog variants should have shipping enabled or a positive
+          weight so the script adds the fee line.
         </s-paragraph>
         <s-paragraph>
           Activate the transform under{" "}
