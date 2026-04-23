@@ -82,7 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var debounceTimer = null;
 
   function scheduleSyncFeeLine(delayMs) {
-    var d = typeof delayMs === "number" ? delayMs : 350;
+    var d = typeof delayMs === "number" ? delayMs : 150;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(function () {
       debounceTimer = null;
@@ -418,13 +418,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (document.visibilityState === "visible") scheduleSyncFeeLine(600);
   });
   document.addEventListener("shopify:section:load", function () {
-    scheduleSyncFeeLine(200);
+    scheduleSyncFeeLine(80);
   });
   document.addEventListener("cart:updated", function () {
-    scheduleSyncFeeLine(200);
+    scheduleSyncFeeLine(80);
   });
   document.addEventListener("ajaxProduct:added", function () {
-    scheduleSyncFeeLine(200);
+    scheduleSyncFeeLine(60);
   });
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
