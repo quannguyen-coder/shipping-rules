@@ -426,6 +426,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   document.addEventListener("ajaxProduct:added", function () {
     scheduleSyncFeeLine(60);
   });
+  // React faster to quantity interactions in cart/drawer, before theme custom events fire.
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!(t instanceof Element)) return;
+    var qtyBtn = t.closest(".quantity__button, button[name='plus'], button[name='minus']");
+    if (!qtyBtn) return;
+    scheduleSyncFeeLine(0);
+    setTimeout(function () {
+      scheduleSyncFeeLine(120);
+    }, 120);
+  });
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!(t instanceof HTMLInputElement)) return;
+    var isQtyInput =
+      t.matches('input[name^="updates"]') ||
+      t.matches("input.quantity__input") ||
+      t.matches('input[data-quantity-variant-id]');
+    if (!isQtyInput) return;
+    scheduleSyncFeeLine(0);
+    setTimeout(function () {
+      scheduleSyncFeeLine(120);
+    }, 120);
+  });
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
   function isCartPath() {
