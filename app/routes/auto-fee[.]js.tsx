@@ -384,7 +384,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             }
             // cart changed; mark stale so next sync refetches if no snapshot captured.
             cachedCartFetchedAt = 0;
-            maybeFastSync("fetch:" + url);
+            // Force latest rules/config after cart mutation.
+            getPublishedConfig(true)
+              .catch(function () {
+                /* ignore config refresh errors; sync still runs */
+              })
+              .finally(function () {
+                maybeFastSync("fetch:" + url);
+              });
           }
           return res;
         });
@@ -405,7 +412,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         this.addEventListener("loadend", function () {
           if (this.status >= 200 && this.status < 300) {
             cachedCartFetchedAt = 0;
-            maybeFastSync("xhr");
+            getPublishedConfig(true)
+              .catch(function () {
+                /* ignore config refresh errors; sync still runs */
+              })
+              .finally(function () {
+                maybeFastSync("xhr");
+              });
           }
         });
       }
