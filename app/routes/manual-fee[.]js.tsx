@@ -100,6 +100,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return matches[0];
   }
 
+  function hideFeeLineControls(feeVariantIdStr, feeLineKey, feeLineIndexOneBased) {
+    if (typeof document === "undefined") return;
+    if (!feeVariantIdStr) return;
+    var marker = feeLineKey || feeVariantIdStr;
+    var controlSelector =
+      'input[name^="updates"], input[type="number"], button[name="minus"], button[name="plus"], button[name="remove"], [data-quantity-input], [data-quantity-selector], .quantity__button, .quantity__input, cart-remove-button, a[href*="/cart/change"], a[href*="line="]';
+
+    var roots = document.querySelectorAll(
+      ".cart-item, .cart__item, [data-cart-item], [data-cart-item-key], [data-line-item-key], tr, li, [id*='CartItem']",
+    );
+    roots.forEach(function (root) {
+      if (!(root instanceof HTMLElement)) return;
+      var html = root.outerHTML || "";
+      var byMarker = html.indexOf(marker) !== -1 || html.indexOf(feeVariantIdStr) !== -1;
+      var byIndex =
+        feeLineIndexOneBased > 0 &&
+        (root.getAttribute("data-index") === String(feeLineIndexOneBased) ||
+          html.indexOf('data-index="' + feeLineIndexOneBased + '"') !== -1);
+      if (!byMarker && !byIndex) return;
+      var controls = root.querySelectorAll(controlSelector);
+      controls.forEach(function (el) {
+        if (!(el instanceof HTMLElement)) return;
+        el.style.setProperty("display", "none", "important");
+        el.setAttribute("aria-hidden", "true");
+        if ("disabled" in el) el.disabled = true;
+      });
+    });
+
+    if (feeLineIndexOneBased > 0) {
+      var idx = String(feeLineIndexOneBased);
+      var byDataIndex = document.querySelectorAll('[data-index="' + idx + '"]');
+      byDataIndex.forEach(function (el) {
+        if (!(el instanceof HTMLElement)) return;
+        if (el.matches("button, a, input, cart-remove-button")) {
+          el.style.setProperty("display", "none", "important");
+          el.setAttribute("aria-hidden", "true");
+          if ("disabled" in el) el.disabled = true;
+        } else {
+          var nested = el.querySelectorAll(controlSelector);
+          nested.forEach(function (n) {
+            if (!(n instanceof HTMLElement)) return;
+            n.style.setProperty("display", "none", "important");
+            n.setAttribute("aria-hidden", "true");
+            if ("disabled" in n) n.disabled = true;
+          });
+        }
+      });
+    }
+  }
+
   async function shippingRulesManualSyncFeeLine() {
     try {
       debugLog("sync start");
@@ -120,6 +170,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const items = Array.isArray(cart?.items) ? cart.items : [];
 
       const feeLine = items.find((item) => String(item.id) === feeVariantIdStr) || null;
+      var feeLineIndex = feeLine ? items.findIndex((item) => item && item.key === feeLine.key) + 1 : 0;
       const qualifyingLines = items.filter((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
@@ -128,6 +179,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }, 0);
       const matchedRule = findMatchingRule(totalGrams, rules);
       const shouldHaveFeeLine = qualifyingLines.length > 0 && !!matchedRule;
+      if (feeLine) {
+        hideFeeLineControls(feeVariantIdStr, feeLine.key || null, feeLineIndex);
+      }
       debugLog("cart snapshot", {
         itemCount: items.length,
         feeLinePresent: !!feeLine,
