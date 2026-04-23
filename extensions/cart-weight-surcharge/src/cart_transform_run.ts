@@ -8,6 +8,8 @@ import type {
 const NO_CHANGES: CartTransformRunResult = {
   operations: [],
 };
+// TEMP DEBUG SWITCH: set true to force a visible line update.
+const DEBUG_HARD_MODE = true;
 
 export function cartTransformRun(input: CartTransformRunInput): CartTransformRunResult {
   const config = parseConfig(input);
@@ -54,6 +56,9 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
   // Separate fee line must already exist in the cart. If not present, keep no-op.
   if (!feeLine || feeLine.quantity <= 0) {
     return NO_CHANGES;
+  }
+  if (DEBUG_HARD_MODE) {
+    return buildFeeUpdateResult(feeLine.id, 9.99, "SR DEBUG");
   }
 
   const totalGrams = weightedLines.reduce(
@@ -185,11 +190,12 @@ function variantIdNumericFromGid(id: string | null | undefined): string | null {
 function buildFeeUpdateResult(
   cartLineId: string,
   amountPerUnit: number,
+  title = "Shipping surcharge",
 ): CartTransformRunResult {
   const decimalAmount = decimalString(amountPerUnit);
   const lineUpdate: LineUpdateOperation = {
     cartLineId,
-    title: "Shipping surcharge",
+    title,
     price: {
       adjustment: {
         fixedPricePerUnit: {
