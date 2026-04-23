@@ -11,8 +11,8 @@ generator client {
 //postgresql://shopify_shipping_rules_a3z0_user:V5JovUmcUuNaiodHyWfEKJEfKEBj5e9y@dpg-d7blmenkijhs73apoef0-a.virginia-postgres.render.com/shopify_shipping_rules_a3z0
 datasource db {
   provider = "postgresql"
-  //url      = env("DATABASE_URL")
-  url = "postgresql://shopify_shipping_rules_a3z0_user:V5JovUmcUuNaiodHyWfEKJEfKEBj5e9y@dpg-d7blmenkijhs73apoef0-a.virginia-postgres.render.com/shopify_shipping_rules_a3z0"
+  url      = env("DATABASE_URL")
+  //url = "postgresql://shopify_shipping_rules_a3z0_user:V5JovUmcUuNaiodHyWfEKJEfKEBj5e9y@dpg-d7blmenkijhs73apoef0-a.virginia-postgres.render.com/shopify_shipping_rules_a3z0"
 }
 
 model Session {
