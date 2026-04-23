@@ -2,10 +2,11 @@ import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 
 /**
- * App proxy script endpoint:
- *   /apps/shipping-rules/auto-fee.js
+ * App proxy URL on the storefront:
+ *   GET /apps/shipping-rules/auto-fee.js
  *
- * Include this script in theme to auto add/remove the fee variant line in cart.
+ * File name uses `[.]` so @react-router/fs-routes maps to `/auto-fee.js` (a flat
+ * `auto-fee.js.tsx` would incorrectly become `/auto-fee/js`).
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
@@ -191,4 +192,3 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
   });
 };
-
