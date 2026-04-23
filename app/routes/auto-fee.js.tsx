@@ -150,12 +150,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   window.addEventListener("pageshow", function () {
     syncFeeLine();
   });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") syncFeeLine();
+  });
+  document.addEventListener("shopify:section:load", function () {
+    syncFeeLine();
+  });
   document.addEventListener("cart:updated", function () {
     syncFeeLine();
   });
   document.addEventListener("ajaxProduct:added", function () {
     syncFeeLine();
   });
+
+  /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
+  function isCartPath() {
+    try {
+      var p = window.location.pathname || "";
+      return p === "/cart" || p.endsWith("/cart");
+    } catch (e) {
+      return false;
+    }
+  }
+
+  if (isCartPath()) {
+    var feeCartPoll = window.setInterval(function () {
+      syncFeeLine();
+    }, 3000);
+    window.addEventListener("pagehide", function () {
+      window.clearInterval(feeCartPoll);
+    });
+  }
 })();
 `.trim();
 
