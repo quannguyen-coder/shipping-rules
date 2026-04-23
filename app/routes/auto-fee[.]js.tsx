@@ -328,7 +328,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  let syncQueue = Promise.resolve();
+  var syncInProgress = false;
+  var syncRerunRequested = false;
+  var syncCurrentPromise = Promise.resolve();
   var lastFastSyncAt = 0;
 
   function maybeFastSync(reason) {
@@ -521,8 +523,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   function syncFeeLine() {
-    syncQueue = syncQueue.then(runSyncOnce, runSyncOnce);
-    return syncQueue;
+    if (syncInProgress) {
+      syncRerunRequested = true;
+      return syncCurrentPromise;
+    }
+    syncInProgress = true;
+    syncCurrentPromise = (async function () {
+      try {
+        do {
+          syncRerunRequested = false;
+          await runSyncOnce();
+        } while (syncRerunRequested);
+      } finally {
+        syncInProgress = false;
+      }
+    })();
+    return syncCurrentPromise;
   }
 
   let bypassCheckoutSubmitGuard = false;
