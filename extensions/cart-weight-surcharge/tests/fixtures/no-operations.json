@@ -3,11 +3,25 @@
     "export": "cart-transform-run",
     "target": "cart.transform.run",
     "input": {
+      "shop": {
+        "metafield": null
+      },
       "cart": {
         "lines": [
           {
             "id": "gid://shopify/CartLine/1",
-            "quantity": 1
+            "quantity": 1,
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "10.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/1",
+              "weight": 100,
+              "weightUnit": "GRAMS"
+            }
           }
         ]
       }

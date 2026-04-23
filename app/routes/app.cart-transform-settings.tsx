@@ -77,6 +77,38 @@ export default function CartTransformSettingsPage() {
 
   return (
     <s-page heading="Cart Transform settings">
+      <s-section heading="Plus checkout (Cart Transform)">
+        <s-paragraph>
+          Rules and <s-text type="strong">fee variant</s-text> are stored on the shop
+          metafield <s-text type="strong">$app.shipping_rules_config</s-text> (JSON).
+          The Cart Transform function reads that metafield and adjusts the fee line
+          price. After you change rules in Shipping rules or save settings here, the
+          metafield updates on save.
+        </s-paragraph>
+        <s-paragraph>
+          <s-text type="strong">Flat fee</s-text> rules set the fee line to that amount
+          (split per unit if quantity is greater than 1).{" "}
+          <s-text type="strong">Percent</s-text>{" "}
+          rules apply to merchandise subtotal (all variant lines except the fee
+          line), not to the shipping rate Shopify shows—Cart Transform has no access
+          to the selected shipping method.
+        </s-paragraph>
+        <s-paragraph>
+          Add the theme script so the fee variant is present when checkout runs the
+          transform:{" "}
+          <s-text type="strong">
+            /apps/shipping-rules/auto-fee.js
+          </s-text>{" "}
+          (see App proxy). Publish rules and set a dedicated fee product variant
+          priced at $0 in Admin.
+        </s-paragraph>
+        <s-paragraph>
+          Activate the transform under{" "}
+          <s-link href="/app/cart-transform-activation">Cart Transform activation</s-link>
+          .
+        </s-paragraph>
+      </s-section>
+
       <s-section heading="Separate fee line configuration">
         <s-paragraph>
           Enter the product variant GID used as the fee line. Cart Transform will

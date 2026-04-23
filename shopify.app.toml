@@ -28,7 +28,7 @@ subpath = "shipping-rules"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_price_rules,write_price_rules,read_discounts,write_discounts,read_metaobjects,write_metaobjects,read_products,write_products,read_shipping,write_shipping"
+scopes = "read_cart_transforms,write_cart_transforms,read_all_cart_transforms,read_price_rules,write_price_rules,read_discounts,write_discounts,read_metaobjects,write_metaobjects,read_products,write_products,read_shipping,write_shipping"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

@@ -23,6 +23,7 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     | null = null;
 
   const weightedLines: { grams: number; quantity: number }[] = [];
+  let merchandiseSubtotal = 0;
 
   for (const line of input.cart.lines) {
     const merchandise = line.merchandise;
@@ -31,6 +32,11 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     if (merchandise.id === config.feeVariantId) {
       feeLine = { id: line.id, quantity: line.quantity };
       continue;
+    }
+
+    const unitPrice = parseDecimal(line.cost?.amountPerQuantity?.amount);
+    if (unitPrice != null && unitPrice >= 0) {
+      merchandiseSubtotal += unitPrice * line.quantity;
     }
 
     const grams = toGrams(merchandise.weight, merchandise.weightUnit);
@@ -53,15 +59,23 @@ export function cartTransformRun(input: CartTransformRunInput): CartTransformRun
     return buildFeeUpdateResult(feeLine.id, 0);
   }
 
-  // For percentage rules, Cart Transform doesn't know shipping base rate.
-  // We currently apply only flat fee in this function path.
+  // Flat fee: currency units per fee line (split across quantity).
   const flatAmount = parseNumber(matchedRule.feeAmount);
-  if (flatAmount == null || flatAmount < 0) {
-    return buildFeeUpdateResult(feeLine.id, 0);
+  if (flatAmount != null && flatAmount >= 0) {
+    const perUnitAmount = flatAmount / feeLine.quantity;
+    return buildFeeUpdateResult(feeLine.id, roundCurrency(perUnitAmount));
   }
 
-  const perUnitAmount = flatAmount / feeLine.quantity;
-  return buildFeeUpdateResult(feeLine.id, roundCurrency(perUnitAmount));
+  // Percent: applied to merchandise subtotal (excludes fee line). Cart Transform has no access
+  // to selected shipping rate; this matches "surcharge scales with order value" for heavy tiers.
+  const pct = parseNumber(matchedRule.feePercent);
+  if (pct != null && pct >= 0 && merchandiseSubtotal > 0) {
+    const totalFee = (merchandiseSubtotal * pct) / 100;
+    const perUnitAmount = totalFee / feeLine.quantity;
+    return buildFeeUpdateResult(feeLine.id, roundCurrency(perUnitAmount));
+  }
+
+  return buildFeeUpdateResult(feeLine.id, 0);
 }
 
 type RulesConfig = {
@@ -76,7 +90,7 @@ type RulesConfig = {
 };
 
 function parseConfig(input: CartTransformRunInput): RulesConfig | null {
-  const raw = input.cart.metafield?.jsonValue as unknown;
+  const raw = input.shop.metafield?.jsonValue as unknown;
   if (!raw || typeof raw !== "object") return null;
   const maybe = raw as {
     rules?: unknown;
@@ -125,6 +139,16 @@ function parseNumber(v: string | null): number | null {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseDecimal(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 function roundCurrency(amount: number): number {
