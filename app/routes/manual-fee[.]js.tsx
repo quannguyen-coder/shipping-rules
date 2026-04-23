@@ -114,11 +114,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (!(root instanceof HTMLElement)) return;
       var html = root.outerHTML || "";
       var byMarker = html.indexOf(marker) !== -1 || html.indexOf(feeVariantIdStr) !== -1;
-      var byIndex =
-        feeLineIndexOneBased > 0 &&
-        (root.getAttribute("data-index") === String(feeLineIndexOneBased) ||
-          html.indexOf('data-index="' + feeLineIndexOneBased + '"') !== -1);
-      if (!byMarker && !byIndex) return;
+      var hasFeeSignal =
+        root.querySelector('input[data-quantity-variant-id="' + feeVariantIdStr + '"]') ||
+        root.querySelector('a[href*="variant=' + feeVariantIdStr + '"]') ||
+        (feeLineKey && root.querySelector('[data-cart-item-key="' + feeLineKey + '"]'));
+      if (!byMarker || !hasFeeSignal) return;
       var controls = root.querySelectorAll(controlSelector);
       controls.forEach(function (el) {
         if (!(el instanceof HTMLElement)) return;
@@ -127,27 +127,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if ("disabled" in el) el.disabled = true;
       });
     });
-
-    if (feeLineIndexOneBased > 0) {
-      var idx = String(feeLineIndexOneBased);
-      var byDataIndex = document.querySelectorAll('[data-index="' + idx + '"]');
-      byDataIndex.forEach(function (el) {
-        if (!(el instanceof HTMLElement)) return;
-        if (el.matches("button, a, input, cart-remove-button")) {
-          el.style.setProperty("display", "none", "important");
-          el.setAttribute("aria-hidden", "true");
-          if ("disabled" in el) el.disabled = true;
-        } else {
-          var nested = el.querySelectorAll(controlSelector);
-          nested.forEach(function (n) {
-            if (!(n instanceof HTMLElement)) return;
-            n.style.setProperty("display", "none", "important");
-            n.setAttribute("aria-hidden", "true");
-            if ("disabled" in n) n.disabled = true;
-          });
-        }
-      });
-    }
 
     // Dawn cart drawer/cart table: hide the full quantity cell for fee line.
     var feeQtyInputs = document.querySelectorAll(
