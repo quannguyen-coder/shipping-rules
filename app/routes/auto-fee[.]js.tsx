@@ -13,20 +13,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const script = `
 (() => {
-  const CONFIG_URL = "/apps/shipping-rules/published-shipping-rules";
-  const CART_URL = "/cart.js";
-  const ADD_URL = "/cart/add.js";
-  const CHANGE_URL = "/cart/change.js";
+  var ROOT =
+    (typeof window !== "undefined" &&
+      window.Shopify &&
+      window.Shopify.routes &&
+      window.Shopify.routes.root) ||
+    "/";
+  if (typeof ROOT !== "string") ROOT = "/";
+  if (ROOT.charAt(ROOT.length - 1) !== "/") ROOT = ROOT + "/";
+
+  var CONFIG_URL = ROOT + "apps/shipping-rules/published-shipping-rules";
+  var CART_URL = ROOT + "cart.js";
+  var ADD_URL = ROOT + "cart/add.js";
+  var CHANGE_URL = ROOT + "cart/change.js";
 
   /**
-   * Numeric id from ProductVariant GID, kept as string so large Snowflake ids are not
-   * rounded by JavaScript Number (which breaks /cart/add.js with "Cannot find variant").
+   * Variant id for Cart API: digits from ProductVariant GID, or already-numeric string.
+   * Prefer Number() in JSON when safe so /cart/add.js matches storefront expectations.
    */
   function gidToVariantIdString(gid) {
     if (!gid || typeof gid !== "string") return null;
-    const raw = gid.split("/").pop();
+    if (/^[0-9]+$/.test(gid)) return gid;
+    if (gid.indexOf("ProductVariant") === -1) return null;
+    var raw = gid.split("/").pop();
     if (!raw || !/^[0-9]+$/.test(raw)) return null;
     return raw;
+  }
+
+  function variantIdForCartPayload(idStr) {
+    if (!idStr) return null;
+    try {
+      var bi = BigInt(idStr);
+      var max = BigInt(Number.MAX_SAFE_INTEGER);
+      if (bi >= 0n && bi <= max) return Number(idStr);
+    } catch (e) {
+      /* fall through */
+    }
+    return idStr;
   }
 
   async function getJson(url, init) {
@@ -65,12 +88,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
 
       if (shouldHaveFeeLine && !feeLine) {
+        var idForCart = variantIdForCartPayload(feeVariantIdStr);
         const addRes = await fetch(ADD_URL, {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            items: [{ id: feeVariantIdStr, quantity: 1 }],
+            items: [{ id: idForCart, quantity: 1 }],
           }),
         });
         if (!addRes.ok) {
@@ -93,7 +117,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: feeVariantIdStr,
+            id: variantIdForCartPayload(feeVariantIdStr),
             quantity: 0,
           }),
         });

@@ -21,6 +21,112 @@ function firstVariantIdFromProduct(product: {
   return edge?.node?.id ?? null;
 }
 
+type AdminGraphql = {
+  graphql: (
+    query: string,
+    options?: { variables?: Record<string, unknown> },
+  ) => Promise<Response>;
+};
+
+/**
+ * Storefront /cart/add.js only sees variants published to a web sales channel.
+ * productCreate alone often leaves the product unpublished on Online Store.
+ */
+async function publishProductToOnlineStore(
+  admin: AdminGraphql,
+  productGid: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const pubRes = await admin.graphql(
+    `#graphql
+      query PublicationsForFeeProduct {
+        publications(first: 25) {
+          nodes {
+            id
+            name
+            catalog {
+              title
+            }
+          }
+        }
+      }`,
+  );
+  const pubJson = (await pubRes.json()) as {
+    data?: {
+      publications?: {
+        nodes?: Array<{
+          id: string;
+          name?: string | null;
+          catalog?: { title?: string | null } | null;
+        } | null> | null;
+      };
+    };
+    errors?: { message: string }[];
+  };
+
+  const top = pubJson.errors?.map((e) => e.message).join(", ");
+  if (top) {
+    return { ok: false, message: top };
+  }
+
+  const nodes = pubJson.data?.publications?.nodes ?? [];
+  let publicationId: string | null = null;
+  for (const n of nodes) {
+    if (!n?.id) continue;
+    const pubName = n.name ?? "";
+    const catTitle = n.catalog?.title ?? "";
+    if (/online store/i.test(pubName) || /online store/i.test(catTitle)) {
+      publicationId = n.id;
+      break;
+    }
+  }
+  if (!publicationId) {
+    const first = nodes.find((n) => n?.id);
+    publicationId = first?.id ?? null;
+  }
+  if (!publicationId) {
+    return { ok: false, message: "No publication found to publish the fee product." };
+  }
+
+  const mutRes = await admin.graphql(
+    `#graphql
+      mutation PublishFeeProductToChannel($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) {
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+    {
+      variables: {
+        id: productGid,
+        input: [{ publicationId }],
+      },
+    },
+  );
+  const mutJson = (await mutRes.json()) as {
+    data?: {
+      publishablePublish?: {
+        userErrors?: Array<{ message: string }>;
+      };
+    };
+    errors?: { message: string }[];
+  };
+
+  const mutTop = mutJson.errors?.map((e) => e.message).join(", ");
+  if (mutTop) {
+    return { ok: false, message: mutTop };
+  }
+  const uerr = mutJson.data?.publishablePublish?.userErrors ?? [];
+  if (uerr.length > 0) {
+    return {
+      ok: false,
+      message: uerr.map((e) => e.message).join(", "),
+    };
+  }
+  return { ok: true };
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
@@ -146,6 +252,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         };
       }
 
+      const publishResult = await publishProductToOnlineStore(admin, product.id);
+      if (!publishResult.ok) {
+        return {
+          ok: false as const,
+          error: `Fee product was created but could not be published to a sales channel: ${publishResult.message}. Reinstall the app after updating scopes, or publish the product to Online Store manually.`,
+        };
+      }
+
       const updateRes = await admin.graphql(
         `#graphql
           mutation SetFeeVariantPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -207,7 +321,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return {
         ok: true as const,
         message:
-          "Fee product created, variant price set to 0, and fee variant saved for Cart Transform.",
+          "Fee product created, published to a sales channel (required for /cart/add.js), variant price set to 0, and fee variant saved for Cart Transform.",
         feeVariantId: variantId,
         productUrl,
       };
@@ -281,6 +395,16 @@ export default function CartTransformSettingsPage() {
           script also polls every few seconds so accelerated checkout buttons still see
           an updated cart. Catalog variants should have shipping enabled or a positive
           weight so the fee line is added.
+        </s-paragraph>
+        <s-paragraph>
+          If <s-text type="strong">/cart/add.js</s-text> responds with Cannot find variant, the
+          fee product is usually not published to <s-text type="strong">Online Store</s-text>.
+          In Admin: open the fee product → <s-text type="strong">Publishing</s-text> (or sales
+          channels) → enable Online Store. New installs: use{" "}
+          <s-text type="strong">Create fee product</s-text> after granting{" "}
+          <s-text type="strong">read_publications</s-text> and{" "}
+          <s-text type="strong">write_publications</s-text> scopes (reinstall the app if
+          prompted).
         </s-paragraph>
         <s-paragraph>
           Activate the transform under{" "}
