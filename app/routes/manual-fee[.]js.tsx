@@ -27,6 +27,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var CART_URL = ROOT + "cart.js";
   var ADD_URL = ROOT + "cart/add.js";
   var CHANGE_URL = ROOT + "cart/change.js";
+  var DEBUG = true;
+
+  function debugLog() {
+    if (!DEBUG) return;
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift("[shipping-rules] manual-fee:");
+    console.log.apply(console, args);
+  }
 
   function gidToVariantIdString(gid) {
     if (!gid || typeof gid !== "string") return null;
@@ -65,9 +73,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   async function shippingRulesManualSyncFeeLine() {
     try {
+      debugLog("sync start");
       const config = await getJson(CONFIG_URL, { credentials: "same-origin" });
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
+      debugLog("config loaded", {
+        feeVariantId: config?.feeVariantId || null,
+        feeVariantIdNumeric: feeVariantIdStr,
+        rulesCount: Array.isArray(config?.rules) ? config.rules.length : 0,
+      });
       if (!feeVariantIdStr) {
+        debugLog("missing feeVariantId in config");
         return { ok: false, reason: "missing_fee_variant_id", detail: config };
       }
 
@@ -78,9 +93,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const shouldHaveFeeLine = items.some((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
+      debugLog("cart snapshot", {
+        itemCount: items.length,
+        feeLinePresent: !!feeLine,
+        shouldHaveFeeLine: shouldHaveFeeLine,
+        lineSummaries: items.map((item) => ({
+          id: item?.id,
+          key: item?.key,
+          quantity: item?.quantity,
+          grams: item?.grams,
+          requires_shipping: item?.requires_shipping,
+        })),
+      });
 
       if (shouldHaveFeeLine && !feeLine) {
         var idForCart = variantIdForCartPayload(feeVariantIdStr);
+        debugLog("adding fee line", { idForCart: idForCart });
         const addRes = await fetch(ADD_URL, {
           method: "POST",
           credentials: "same-origin",
@@ -97,6 +125,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           } catch (_) {
           }
           console.warn("[shipping-rules] manual-fee: cart/add.js failed", addRes.status, parsed || errText);
+          debugLog("add failed", { status: addRes.status, body: parsed || errText });
           return {
             ok: false,
             reason: "add_failed",
@@ -105,10 +134,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           };
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
+        debugLog("add success");
         return { ok: true, action: "added" };
       }
 
       if (!shouldHaveFeeLine && feeLine) {
+        debugLog("removing fee line", { id: feeVariantIdStr });
         await fetch(CHANGE_URL, {
           method: "POST",
           credentials: "same-origin",
@@ -119,9 +150,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           }),
         });
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
+        debugLog("remove success");
         return { ok: true, action: "removed" };
       }
 
+      debugLog("no change needed");
       return {
         ok: true,
         action: "noop",
@@ -136,7 +169,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   window.shippingRulesManualSyncFeeLine = shippingRulesManualSyncFeeLine;
   console.info(
-    "[shipping-rules] manual-fee: loaded. Run: await shippingRulesManualSyncFeeLine()",
+    "[shipping-rules] manual-fee: loaded (debug ON). Run: await shippingRulesManualSyncFeeLine()",
   );
 })();
 `.trim();

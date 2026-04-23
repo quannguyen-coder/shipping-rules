@@ -26,6 +26,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var CART_URL = ROOT + "cart.js";
   var ADD_URL = ROOT + "cart/add.js";
   var CHANGE_URL = ROOT + "cart/change.js";
+  var DEBUG =
+    typeof window !== "undefined" &&
+    (window.SHIPPING_RULES_DEBUG === true ||
+      (window.location &&
+        typeof window.location.search === "string" &&
+        /(?:\\?|&)shipping_rules_debug=1(?:&|$)/.test(window.location.search)));
+
+  function debugLog() {
+    if (!DEBUG) return;
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift("[shipping-rules] auto-fee:");
+    console.log.apply(console, args);
+  }
 
   /**
    * Variant id for Cart API: digits from ProductVariant GID, or already-numeric string.
@@ -97,6 +110,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try {
       const config = await getJson(CONFIG_URL, { credentials: "same-origin" });
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
+      debugLog("config loaded", {
+        feeVariantId: config?.feeVariantId || null,
+        feeVariantIdNumeric: feeVariantIdStr,
+        rulesCount: Array.isArray(config?.rules) ? config.rules.length : 0,
+      });
       if (!feeVariantIdStr) {
         console.warn("[shipping-rules] auto-fee: missing feeVariantId in app proxy config");
         return;
@@ -109,12 +127,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const shouldHaveFeeLine = items.some((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
+      debugLog("sync snapshot", {
+        itemCount: items.length,
+        feeLinePresent: !!feeLine,
+        shouldHaveFeeLine: shouldHaveFeeLine,
+        cooldownRemainingMs: Math.max(0, addCooldownUntil - Date.now()),
+      });
 
       if (shouldHaveFeeLine && !feeLine) {
         if (Date.now() < addCooldownUntil) {
+          debugLog("skip add during cooldown", {
+            cooldownUntil: addCooldownUntil,
+          });
           return;
         }
         var idForCart = variantIdForCartPayload(feeVariantIdStr);
+        debugLog("adding fee line", { idForCart: idForCart });
         const addRes = await fetch(ADD_URL, {
           method: "POST",
           credentials: "same-origin",
@@ -135,14 +163,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           }
           if (addRes.status === 429) waitSec = 300;
           bumpAddCooldown(waitSec * 1000);
+          debugLog("add failed", {
+            status: addRes.status,
+            cooldownSeconds: waitSec,
+          });
           return;
         }
         addCooldownUntil = 0;
+        debugLog("add success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         return;
       }
 
       if (!shouldHaveFeeLine && feeLine) {
+        debugLog("removing fee line", { id: feeVariantIdStr });
         await fetch(CHANGE_URL, {
           method: "POST",
           credentials: "same-origin",
@@ -152,7 +186,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             quantity: 0,
           }),
         });
+        debugLog("remove success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
+      } else {
+        debugLog("no change needed");
       }
     } catch (err) {
       console.warn("[shipping-rules] auto-fee sync error", err);
