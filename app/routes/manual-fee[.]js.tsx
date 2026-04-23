@@ -103,23 +103,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   function hideFeeLineControls(feeVariantIdStr, feeLineKey, feeLineIndexOneBased) {
     if (typeof document === "undefined") return;
     if (!feeVariantIdStr) return;
-    var marker = feeLineKey || feeVariantIdStr;
     var controlSelector =
       'input[name^="updates"], input[type="number"], button[name="minus"], button[name="plus"], button[name="remove"], [data-quantity-input], [data-quantity-selector], .quantity__button, .quantity__input, cart-remove-button, a[href*="/cart/change"], a[href*="line="]';
+    var rowSelector = ".cart-item, .cart__item, tr[role='row'], [data-cart-item-key], [data-line-item-key], li";
+    var feeRows = [];
+    function addRowFromNode(node) {
+      if (!(node instanceof HTMLElement)) return;
+      var row = node.closest(rowSelector);
+      if (!(row instanceof HTMLElement)) return;
+      if (feeRows.indexOf(row) === -1) feeRows.push(row);
+    }
 
-    var roots = document.querySelectorAll(
-      ".cart-item, .cart__item, [data-cart-item], [data-cart-item-key], [data-line-item-key], tr, li, [id*='CartItem']",
-    );
-    roots.forEach(function (root) {
-      if (!(root instanceof HTMLElement)) return;
-      var html = root.outerHTML || "";
-      var byMarker = html.indexOf(marker) !== -1 || html.indexOf(feeVariantIdStr) !== -1;
-      var hasFeeSignal =
-        root.querySelector('input[data-quantity-variant-id="' + feeVariantIdStr + '"]') ||
-        root.querySelector('a[href*="variant=' + feeVariantIdStr + '"]') ||
-        (feeLineKey && root.querySelector('[data-cart-item-key="' + feeLineKey + '"]'));
-      if (!byMarker || !hasFeeSignal) return;
-      var controls = root.querySelectorAll(controlSelector);
+    document
+      .querySelectorAll('input[data-quantity-variant-id="' + feeVariantIdStr + '"]')
+      .forEach(addRowFromNode);
+    document
+      .querySelectorAll('a[href*="variant=' + feeVariantIdStr + '"]')
+      .forEach(addRowFromNode);
+    if (feeLineKey) {
+      document
+        .querySelectorAll('[data-cart-item-key="' + feeLineKey + '"], [data-line-item-key="' + feeLineKey + '"]')
+        .forEach(addRowFromNode);
+    }
+
+    feeRows.forEach(function (row) {
+      var controls = row.querySelectorAll(controlSelector);
       controls.forEach(function (el) {
         if (!(el instanceof HTMLElement)) return;
         el.style.setProperty("display", "none", "important");
@@ -129,9 +137,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
 
     // Dawn cart drawer/cart table: hide the full quantity cell for fee line.
-    var feeQtyInputs = document.querySelectorAll(
-      'input[data-quantity-variant-id="' + feeVariantIdStr + '"]',
-    );
+    var feeQtyInputs = document.querySelectorAll('input[data-quantity-variant-id="' + feeVariantIdStr + '"]');
     feeQtyInputs.forEach(function (input) {
       if (!(input instanceof HTMLElement)) return;
       var row = input.closest("tr.cart-item");

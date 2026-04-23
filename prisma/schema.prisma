@@ -8,9 +8,11 @@ generator client {
 // Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+//postgresql://shopify_shipping_rules_a3z0_user:V5JovUmcUuNaiodHyWfEKJEfKEBj5e9y@dpg-d7blmenkijhs73apoef0-a.virginia-postgres.render.com/shopify_shipping_rules_a3z0
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  //url      = env("DATABASE_URL")
+  url = "postgresql://shopify_shipping_rules_a3z0_user:V5JovUmcUuNaiodHyWfEKJEfKEBj5e9y@dpg-d7blmenkijhs73apoef0-a.virginia-postgres.render.com/shopify_shipping_rules_a3z0"
 }
 
 model Session {

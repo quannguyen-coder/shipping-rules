@@ -1,0 +1,39 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "id": "gid://shopify/CartLine/main",
+        "quantity": 1,
+        "cost": { "amountPerQuantity": { "amount": "50.00" } },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/50513835753757",
+          "weight": 3000,
+          "weightUnit": "GRAMS"
+        }
+      },
+      {
+        "id": "gid://shopify/CartLine/fee",
+        "quantity": 1,
+        "cost": { "amountPerQuantity": { "amount": "0.00" } },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/51199407259933",
+          "weight": 0,
+          "weightUnit": "GRAMS"
+        }
+      }
+    ]
+  },
+  "shop": {
+    "metafield": {
+      "jsonValue": {
+        "feeVariantId": "gid://shopify/ProductVariant/51199407259933",
+        "rules": [
+          { "weightMinGrams": 0, "weightMaxGrams": 5000, "feeAmount": "2", "feePercent": null, "priority": 0 },
+          { "weightMinGrams": 15000, "weightMaxGrams": 999999999, "feeAmount": null, "feePercent": "10", "priority": 0 }
+        ]
+      }
+    }
+  }
+}
