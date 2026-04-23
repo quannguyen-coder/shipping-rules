@@ -82,7 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var debounceTimer = null;
 
   function scheduleSyncFeeLine(delayMs) {
-    var d = typeof delayMs === "number" ? delayMs : 900;
+    var d = typeof delayMs === "number" ? delayMs : 350;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(function () {
       debounceTimer = null;
@@ -103,6 +103,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   async function refreshCartUi() {
     var replacedCount = 0;
+    // Let themes react immediately while section HTML is fetching.
+    window.dispatchEvent(new CustomEvent("cart:refresh"));
+    window.dispatchEvent(new CustomEvent("cart:updated"));
+    window.dispatchEvent(new CustomEvent("shipping-rules:cart-refreshed"));
     try {
       var params = new URLSearchParams();
       params.set("sections", SECTION_IDS.join(","));
@@ -142,9 +146,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     } catch (err) {
       debugLog("refreshCartUi fallback via events", err);
     } finally {
-      window.dispatchEvent(new CustomEvent("cart:refresh"));
-      window.dispatchEvent(new CustomEvent("cart:updated"));
-      window.dispatchEvent(new CustomEvent("shipping-rules:cart-refreshed"));
       if (replacedCount === 0) {
         debugLog("no section replaced, hard reload");
         window.location.reload();
@@ -325,7 +326,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         addCooldownUntil = 0;
         debugLog("add success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
-        await refreshCartUi();
+        refreshCartUi();
         return;
       }
 
@@ -343,7 +344,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         debugLog("remove success");
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
-        await refreshCartUi();
+        refreshCartUi();
       } else {
         debugLog("no change needed");
       }
@@ -417,13 +418,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (document.visibilityState === "visible") scheduleSyncFeeLine(600);
   });
   document.addEventListener("shopify:section:load", function () {
-    scheduleSyncFeeLine();
+    scheduleSyncFeeLine(200);
   });
   document.addEventListener("cart:updated", function () {
-    scheduleSyncFeeLine();
+    scheduleSyncFeeLine(200);
   });
   document.addEventListener("ajaxProduct:added", function () {
-    scheduleSyncFeeLine();
+    scheduleSyncFeeLine(200);
   });
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */

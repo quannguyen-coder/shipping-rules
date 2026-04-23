@@ -109,6 +109,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   async function refreshCartUi() {
     var replacedCount = 0;
+    // Let themes react immediately while section HTML is fetching.
+    window.dispatchEvent(new CustomEvent("cart:refresh"));
+    window.dispatchEvent(new CustomEvent("cart:updated"));
+    window.dispatchEvent(new CustomEvent("shipping-rules:cart-refreshed"));
     try {
       var params = new URLSearchParams();
       params.set("sections", SECTION_IDS.join(","));
@@ -148,9 +152,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     } catch (err) {
       debugLog("refreshCartUi fallback via events", err);
     } finally {
-      window.dispatchEvent(new CustomEvent("cart:refresh"));
-      window.dispatchEvent(new CustomEvent("cart:updated"));
-      window.dispatchEvent(new CustomEvent("shipping-rules:cart-refreshed"));
       if (replacedCount === 0) {
         debugLog("no section replaced, hard reload");
         window.location.reload();
@@ -284,7 +285,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         debugLog("add success");
-        await refreshCartUi();
+        refreshCartUi();
         return { ok: true, action: "added" };
       }
 
@@ -302,7 +303,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         debugLog("remove success");
-        await refreshCartUi();
+        refreshCartUi();
         return { ok: true, action: "removed" };
       }
 
