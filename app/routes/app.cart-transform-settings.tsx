@@ -401,14 +401,18 @@ export default function CartTransformSettingsPage() {
           weight so the fee line is added.
         </s-paragraph>
         <s-paragraph>
-          If <s-text type="strong">/cart/add.js</s-text> responds with Cannot find variant, the
-          fee product is usually not published to <s-text type="strong">Online Store</s-text>.
-          In Admin: open the fee product → <s-text type="strong">Publishing</s-text> (or sales
-          channels) → enable Online Store. New installs: use{" "}
-          <s-text type="strong">Create fee product</s-text> after granting{" "}
+          Theme <s-text type="strong">Add to cart</s-text> often posts to{" "}
+          <s-text type="strong">/cart/add</s-text> (form fields); the app uses{" "}
+          <s-text type="strong">/cart/add.js</s-text> (JSON). Both require the same thing: the
+          variant must exist and be available on the storefront (typically{" "}
+          <s-text type="strong">Online Store</s-text>). A catalog variant can succeed on{" "}
+          <s-text type="strong">/cart/add</s-text> while the fee variant returns Cannot find variant
+          on <s-text type="strong">/cart/add.js</s-text> when the fee product is not published to
+          that channel—not because the URL path differs. In Admin: open the fee product →{" "}
+          <s-text type="strong">Publishing</s-text> (or sales channels) → enable Online Store.
+          New installs: use <s-text type="strong">Create fee product</s-text> after granting{" "}
           <s-text type="strong">read_publications</s-text> and{" "}
-          <s-text type="strong">write_publications</s-text> scopes (reinstall the app if
-          prompted).
+          <s-text type="strong">write_publications</s-text> scopes (reinstall the app if prompted).
         </s-paragraph>
         <s-paragraph>
           Activate the transform under{" "}
