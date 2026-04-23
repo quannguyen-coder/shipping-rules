@@ -26,6 +26,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var CART_URL = ROOT + "cart.js";
   var ADD_URL = ROOT + "cart/add.js";
   var CHANGE_URL = ROOT + "cart/change.js";
+  var CONFIG_TTL_MS = 15000;
   var SECTION_IDS = [
     "cart-drawer",
     "cart-icon-bubble",
@@ -76,6 +77,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const response = await fetch(url, init);
     if (!response.ok) throw new Error(\`Request failed: \${url} \${response.status}\`);
     return response.json();
+  }
+
+  var cachedConfig = null;
+  var cachedConfigFetchedAt = 0;
+  var configInFlight = null;
+
+  async function getPublishedConfig(force) {
+    var now = Date.now();
+    var isFresh = cachedConfig && now - cachedConfigFetchedAt < CONFIG_TTL_MS;
+    if (!force && isFresh) return cachedConfig;
+    if (configInFlight) return configInFlight;
+    configInFlight = getJson(CONFIG_URL, { credentials: "same-origin" })
+      .then(function (cfg) {
+        cachedConfig = cfg;
+        cachedConfigFetchedAt = Date.now();
+        return cfg;
+      })
+      .finally(function () {
+        configInFlight = null;
+      });
+    return configInFlight;
   }
 
   var addCooldownUntil = 0;
@@ -343,7 +365,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   async function runSyncOnce() {
     try {
-      const config = await getJson(CONFIG_URL, { credentials: "same-origin" });
+      const config = await getPublishedConfig(false);
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
       debugLog("config loaded", {
         feeVariantId: config?.feeVariantId || null,
@@ -540,6 +562,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     maybeFastSync("qty-input");
   });
   installCartMutationHooks();
+  // Preload config early so first cart change responds faster.
+  getPublishedConfig(false).catch(function (err) {
+    debugLog("config preload failed", err);
+  });
 
   /** Hosted checkout does not run this script—fee line must exist in /cart.js first. */
   function isCartPath() {
