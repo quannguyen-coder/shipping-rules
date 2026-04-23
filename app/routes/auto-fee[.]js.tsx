@@ -247,12 +247,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       if (!shouldHaveFeeLine && feeLine) {
         debugLog("removing fee line", { id: feeVariantIdStr });
+        var changeId = feeLine.key || variantIdForCartPayload(feeVariantIdStr);
         await fetch(CHANGE_URL, {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: variantIdForCartPayload(feeVariantIdStr),
+            id: changeId,
             quantity: 0,
           }),
         });
