@@ -152,6 +152,93 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return cartInFlight;
   }
 
+  async function fetchCartForMiniCartReload() {
+    const response = await fetch(CART_URL, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+    if (!response.ok) throw new Error("mini-cart /cart.js failed: " + response.status);
+    return response.json();
+  }
+
+  function safeMoney(cents) {
+    try {
+      if (typeof window !== "undefined" && window.Shopify && typeof window.Shopify.formatMoney === "function") {
+        return window.Shopify.formatMoney(cents || 0);
+      }
+    } catch (_) {
+      /* no-op */
+    }
+    return String(cents || 0);
+  }
+
+  function renderMiniCartFallback(cart) {
+    if (!cart || typeof cart !== "object") return;
+    var miniCartContainer = document.querySelector("[data-mini-cart]");
+    if (!(miniCartContainer instanceof HTMLElement)) return;
+    var items = Array.isArray(cart.items) ? cart.items : [];
+    miniCartContainer.innerHTML =
+      '<div class="mini-cart-header">' +
+      "<span>Items: " +
+      String(Number(cart.item_count) || 0) +
+      "</span>" +
+      "<span>Total: " +
+      safeMoney(Number(cart.total_price) || 0) +
+      "</span>" +
+      "</div>" +
+      '<ul class="mini-cart-items">' +
+      items
+        .map(function (item) {
+          var image = item && item.image ? String(item.image) : "";
+          var title = item && item.product_title ? String(item.product_title) : "";
+          var variantTitle = item && item.variant_title ? String(item.variant_title) : "";
+          var qty = item ? Number(item.quantity) || 0 : 0;
+          return (
+            '<li class="mini-cart-item">' +
+            (image ? '<img src="' + image + '" alt="' + title + '" />' : "") +
+            "<div>" +
+            "<div>" +
+            title +
+            "</div>" +
+            "<div>" +
+            variantTitle +
+            "</div>" +
+            "<div>Qty: " +
+            String(qty) +
+            "</div>" +
+            "</div>" +
+            "</li>"
+          );
+        })
+        .join("") +
+      "</ul>";
+  }
+
+  async function reloadMiniCartFromCartJs(reason) {
+    try {
+      var cart = await fetchCartForMiniCartReload();
+      captureCartSnapshot(cart);
+      renderMiniCartFallback(cart);
+      document.dispatchEvent(
+        new CustomEvent("shipping-rules:minicart-reloaded", {
+          detail: {
+            reason: reason || "unknown",
+            cart: cart,
+          },
+        }),
+      );
+      window.dispatchEvent(new CustomEvent("cart:updated"));
+      return cart;
+    } catch (err) {
+      debugLog("reloadMiniCartFromCartJs failed", { reason: reason, err: err });
+      return null;
+    }
+  }
+
   function getCartFingerprint(maybeCart) {
     if (!maybeCart || typeof maybeCart !== "object") return null;
     var items = Array.isArray(maybeCart.items) ? maybeCart.items : null;
@@ -621,6 +708,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const feeTotal = calculatedFeeTotal(matchedRule, qualifyingLines);
       const shouldHaveFeeLine = qualifyingLines.length > 0 && feeTotal > 0;
       if (feeLine) {
+        await reloadMiniCartFromCartJs("before-hide-fee-controls");
         hideFeeLineControls(feeVariantIdStr, feeLine.key || null, feeLineIndex);
       }
       debugLog("sync snapshot", {
