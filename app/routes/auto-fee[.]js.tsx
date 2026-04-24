@@ -70,8 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   function reloadPage(reason, extra) {
     logPageReloadCall(reason, extra);
-    // TEMP: disable hard reload while debugging cart refresh timing.
-    // window.location.reload();
+    window.location.reload();
   }
 
   /**
@@ -548,11 +547,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             }
             // cart changed; mark stale so next sync refetches if no snapshot captured.
             cachedCartFetchedAt = 0;
-            // Do not force refresh config on every mutation.
-            // Rules/config are already cached with TTL; forcing here causes noisy,
-            // low-value requests to app-proxy endpoint.
-            refreshCartUi();
-            maybeFastSync("fetch:" + url);
+            reloadPage("cart-mutation:fetch-success", {
+              mutationKind: mutationKind,
+              url: url || null,
+            });
           }
           return res;
         });
@@ -588,9 +586,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               lineItem: this.__shippingRulesCartLineItem || null,
             });
             cachedCartFetchedAt = 0;
-            // Same as fetch hook: keep config refresh on TTL, not per mutation.
-            refreshCartUi();
-            maybeFastSync("xhr");
+            reloadPage("cart-mutation:xhr-success", {
+              mutationKind: this.__shippingRulesCartMutationKind || null,
+              url: this.__shippingRulesCartUrl || null,
+            });
           }
         });
       }
