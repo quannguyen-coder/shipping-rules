@@ -415,7 +415,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var syncRerunRequested = false;
   var syncCurrentPromise = Promise.resolve();
   var lastFastSyncAt = 0;
-  var skipNextCartUiRefresh = false;
 
   function maybeFastSync(reason) {
     var now = Date.now();
@@ -426,11 +425,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     setTimeout(function () {
       scheduleSyncFeeLine(60);
     }, 60);
-  }
-
-  function maybeFastSyncWithoutUiRefresh(reason) {
-    skipNextCartUiRefresh = true;
-    maybeFastSync(reason);
   }
 
   function isCartMutationUrl(urlLike) {
@@ -567,7 +561,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             // Do not force refresh config on every mutation.
             // Rules/config are already cached with TTL; forcing here causes noisy,
             // low-value requests to app-proxy endpoint.
-            maybeFastSyncWithoutUiRefresh("fetch:" + url);
+            refreshCartUi();
+            maybeFastSync("fetch:" + url);
           }
           return res;
         });
@@ -604,7 +599,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             });
             cachedCartFetchedAt = 0;
             // Same as fetch hook: keep config refresh on TTL, not per mutation.
-            maybeFastSyncWithoutUiRefresh("xhr");
+            refreshCartUi();
+            maybeFastSync("xhr");
           }
         });
       }
@@ -613,8 +609,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   async function runSyncOnce() {
-    var allowCartUiRefresh = !skipNextCartUiRefresh;
-    skipNextCartUiRefresh = false;
     try {
       const config = await getPublishedConfig(false);
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
@@ -703,11 +697,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         cachedCartFetchedAt = 0;
-        if (allowCartUiRefresh) {
-          await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
-        } else {
-          debugLog("skip UI refresh for hook-triggered sync", { reason: "add-fee-line" });
-        }
+        await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
         return;
       }
 
@@ -743,11 +733,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         cachedCartFetchedAt = 0;
-        if (allowCartUiRefresh) {
-          await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
-        } else {
-          debugLog("skip UI refresh for hook-triggered sync", { reason: "remove-fee-line" });
-        }
+        await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
       } else {
         debugLog("no change needed");
       }
