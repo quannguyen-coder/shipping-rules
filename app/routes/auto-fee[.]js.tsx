@@ -176,6 +176,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   var addCooldownUntil = 0;
   var debounceTimer = null;
+  var cartReloadDelayTimer = null;
 
   function scheduleSyncFeeLine(delayMs) {
     var d = typeof delayMs === "number" ? delayMs : 150;
@@ -247,6 +248,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         window.location.reload();
       }
     }
+  }
+
+  function scheduleDelayedCartUiRefresh(reason) {
+    clearTimeout(cartReloadDelayTimer);
+    cartReloadDelayTimer = setTimeout(function () {
+      cartReloadDelayTimer = null;
+      debugLog("delayed cart UI refresh", { reason: reason });
+      refreshCartUi();
+    }, 1500);
   }
 
   /** Cart line counts toward surcharge context (matches storefront weight rules intent). */
@@ -806,6 +816,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   document.addEventListener("ajaxProduct:added", function () {
     scheduleSyncFeeLine(60);
   });
+  ["cart:added", "cart:quantityChanged", "cart:removed", "cart:changed"].forEach(function (eventName) {
+    document.addEventListener(eventName, function () {
+      scheduleDelayedCartUiRefresh(eventName);
+    });
+  });
   // React faster to quantity interactions in cart/drawer, before theme custom events fire.
   document.addEventListener("click", function (e) {
     var t = e.target;
@@ -848,6 +863,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       window.clearInterval(feeCartPoll);
     });
   }
+  window.addEventListener("pagehide", function () {
+    clearTimeout(cartReloadDelayTimer);
+    cartReloadDelayTimer = null;
+  });
 })();
 `.trim();
 
