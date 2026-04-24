@@ -218,69 +218,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       "</ul>";
   }
 
-  function replaceSectionHtml(sectionId, html) {
-    if (typeof html !== "string" || !html) return 0;
-    var replaced = 0;
-    var candidates = [];
-    var byId = document.getElementById("shopify-section-" + sectionId);
-    if (byId) candidates.push(byId);
-    document
-      .querySelectorAll('[id^="shopify-section-' + sectionId + '"], [data-section-id="' + sectionId + '"]')
-      .forEach(function (el) {
-        if (el instanceof HTMLElement && candidates.indexOf(el) === -1) candidates.push(el);
-      });
-    if (candidates.length === 0) return 0;
-    var doc = new DOMParser().parseFromString(html, "text/html");
-    var parsedRoot = doc.getElementById("shopify-section-" + sectionId);
-    candidates.forEach(function (liveRoot) {
-      if (!(liveRoot instanceof HTMLElement)) return;
-      if (parsedRoot && liveRoot.parentNode) {
-        liveRoot.parentNode.replaceChild(parsedRoot.cloneNode(true), liveRoot);
-      } else {
-        liveRoot.innerHTML = html;
-      }
-      replaced += 1;
-    });
-    return replaced;
-  }
-
-  async function reloadMiniCartHtmlViaSections(reason) {
-    try {
-      var params = new URLSearchParams();
-      params.set("sections", SECTION_IDS.join(","));
-      params.set("sections_url", window.location.pathname + window.location.search);
-      const sectionsRes = await fetch(ROOT + "?" + params.toString(), {
-        credentials: "same-origin",
-      });
-      if (!sectionsRes.ok) throw new Error("mini-cart sections reload failed: " + sectionsRes.status);
-      const sections = await sectionsRes.json();
-      if (!sections || typeof sections !== "object") return 0;
-      var replacedCount = 0;
-      Object.keys(sections).forEach(function (sectionId) {
-        replacedCount += replaceSectionHtml(sectionId, sections[sectionId]);
-      });
-      debugLog("reloadMiniCartHtmlViaSections", { reason: reason, replacedCount: replacedCount });
-      return replacedCount;
-    } catch (err) {
-      debugLog("reloadMiniCartHtmlViaSections failed", { reason: reason, err: err });
-      return 0;
-    }
-  }
-
   async function reloadMiniCartFromCartJs(reason) {
     try {
       var cart = await fetchCartForMiniCartReload();
       captureCartSnapshot(cart);
-      var replacedCount = await reloadMiniCartHtmlViaSections(reason);
-      if (replacedCount === 0) {
-        renderMiniCartFallback(cart);
-      }
+      renderMiniCartFallback(cart);
       document.dispatchEvent(
         new CustomEvent("shipping-rules:minicart-reloaded", {
           detail: {
             reason: reason || "unknown",
             cart: cart,
-            replacedCount: replacedCount,
           },
         }),
       );
