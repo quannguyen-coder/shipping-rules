@@ -378,6 +378,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var syncRerunRequested = false;
   var syncCurrentPromise = Promise.resolve();
   var lastFastSyncAt = 0;
+  var skipNextCartUiRefresh = false;
 
   function maybeFastSync(reason) {
     var now = Date.now();
@@ -388,6 +389,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     setTimeout(function () {
       scheduleSyncFeeLine(60);
     }, 60);
+  }
+
+  function maybeFastSyncWithoutUiRefresh(reason) {
+    skipNextCartUiRefresh = true;
+    maybeFastSync(reason);
   }
 
   function isCartMutationUrl(urlLike) {
@@ -406,6 +412,80 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
+  function classifyCartMutation(urlLike) {
+    if (!urlLike) return null;
+    try {
+      var u = new URL(String(urlLike), window.location.origin);
+      var p = (u.pathname || "").toLowerCase();
+      if (p.endsWith("/cart/add.js")) return "add";
+      if (p.endsWith("/cart/change.js")) return "change";
+      if (p.endsWith("/cart/update.js")) return "update";
+      if (p.endsWith("/cart/clear.js")) return "clear";
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function dispatchCartMutationEvents(kind, payload, meta) {
+    var lineItem = meta && meta.lineItem ? meta.lineItem : null;
+    var detail = {
+      kind: kind || "unknown",
+      lineItem: lineItem,
+      cart: payload || null,
+      source: meta || null,
+    };
+    var events = ["cart:changed"];
+    if (kind === "add") events.push("cart:added");
+    if (kind === "change" || kind === "update") events.push("cart:quantityChanged");
+    if (kind === "clear") events.push("cart:removed");
+    events.forEach(function (name) {
+      document.dispatchEvent(new CustomEvent(name, { detail: detail }));
+    });
+  }
+
+  function normalizeLineItem(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var id = raw.id != null ? String(raw.id) : null;
+    var quantity = Number(raw.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) quantity = 1;
+    var key = raw.key != null ? String(raw.key) : null;
+    if (!id && !key) return null;
+    return {
+      id: id,
+      quantity: quantity,
+      key: key,
+    };
+  }
+
+  function extractLineItemFromBody(body) {
+    if (!body) return null;
+    try {
+      if (typeof body === "string") {
+        var parsed = JSON.parse(body);
+        if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+          return normalizeLineItem(parsed.items[0]);
+        }
+        if (parsed && typeof parsed === "object") return normalizeLineItem(parsed);
+      }
+      if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+        return normalizeLineItem({
+          id: body.get("id"),
+          quantity: body.get("quantity"),
+        });
+      }
+      if (typeof FormData !== "undefined" && body instanceof FormData) {
+        return normalizeLineItem({
+          id: body.get("id"),
+          quantity: body.get("quantity"),
+        });
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   function installCartMutationHooks() {
     // Hook fetch for immediate post-mutation sync.
     if (typeof window.fetch === "function") {
@@ -413,6 +493,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       window.fetch = function (input, init) {
         var url = typeof input === "string" ? input : input && input.url;
         var shouldWatch = isCartMutationUrl(url);
+        var mutationKind = classifyCartMutation(url);
+        var requestLineItem = extractLineItemFromBody(init && init.body);
         return originalFetch(input, init).then(function (res) {
           if (shouldWatch && res && res.ok) {
             try {
@@ -421,19 +503,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 .json()
                 .then(function (payload) {
                   captureCartSnapshot(payload);
+                  dispatchCartMutationEvents(mutationKind, payload, {
+                    transport: "fetch",
+                    url: url || null,
+                    lineItem: requestLineItem,
+                  });
                 })
                 .catch(function () {
                   /* mutation may not return full cart shape */
+                  dispatchCartMutationEvents(mutationKind, null, {
+                    transport: "fetch",
+                    url: url || null,
+                    lineItem: requestLineItem,
+                  });
                 });
             } catch (_) {
               /* ignore clone/parse errors */
+              dispatchCartMutationEvents(mutationKind, null, {
+                transport: "fetch",
+                url: url || null,
+                lineItem: requestLineItem,
+              });
             }
             // cart changed; mark stale so next sync refetches if no snapshot captured.
             cachedCartFetchedAt = 0;
             // Do not force refresh config on every mutation.
             // Rules/config are already cached with TTL; forcing here causes noisy,
             // low-value requests to app-proxy endpoint.
-            maybeFastSync("fetch:" + url);
+            maybeFastSyncWithoutUiRefresh("fetch:" + url);
           }
           return res;
         });
@@ -447,15 +544,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     var origSend = XHR.prototype.send;
     XHR.prototype.open = function (method, url) {
       this.__shippingRulesCartWatch = isCartMutationUrl(url);
+      this.__shippingRulesCartMutationKind = classifyCartMutation(url);
+      this.__shippingRulesCartUrl = url || null;
       return origOpen.apply(this, arguments);
     };
     XHR.prototype.send = function () {
+      this.__shippingRulesCartLineItem = extractLineItemFromBody(arguments[0]);
       if (this.__shippingRulesCartWatch) {
         this.addEventListener("loadend", function () {
           if (this.status >= 200 && this.status < 300) {
+            var payload = null;
+            try {
+              payload = this.responseText ? JSON.parse(this.responseText) : null;
+              captureCartSnapshot(payload);
+            } catch (_) {
+              payload = null;
+            }
+            dispatchCartMutationEvents(this.__shippingRulesCartMutationKind, payload, {
+              transport: "xhr",
+              url: this.__shippingRulesCartUrl || null,
+              lineItem: this.__shippingRulesCartLineItem || null,
+            });
             cachedCartFetchedAt = 0;
             // Same as fetch hook: keep config refresh on TTL, not per mutation.
-            maybeFastSync("xhr");
+            maybeFastSyncWithoutUiRefresh("xhr");
           }
         });
       }
@@ -464,6 +576,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   async function runSyncOnce() {
+    var allowCartUiRefresh = !skipNextCartUiRefresh;
+    skipNextCartUiRefresh = false;
     try {
       const config = await getPublishedConfig(false);
       const feeVariantIdStr = gidToVariantIdString(config?.feeVariantId);
@@ -552,7 +666,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         cachedCartFetchedAt = 0;
-        await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
+        if (allowCartUiRefresh) {
+          await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
+        } else {
+          debugLog("skip UI refresh for hook-triggered sync", { reason: "add-fee-line" });
+        }
         return;
       }
 
@@ -588,7 +706,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         cachedCartFetchedAt = 0;
-        await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
+        if (allowCartUiRefresh) {
+          await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
+        } else {
+          debugLog("skip UI refresh for hook-triggered sync", { reason: "remove-fee-line" });
+        }
       } else {
         debugLog("no change needed");
       }
