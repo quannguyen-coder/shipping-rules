@@ -70,18 +70,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   function reloadPage(reason, extra) {
     logPageReloadCall(reason, extra);
-    try {
-      var alertPayload = {
-        reason: reason || "unknown",
-        pathname: window.location ? String(window.location.pathname || "") : "",
-        href: window.location ? String(window.location.href || "") : "",
-        extra: extra || null,
-      };
-      alert("[shipping-rules] page will reload\\n" + JSON.stringify(alertPayload, null, 2));
-    } catch (_) {
-      /* no-op */
-    }
-    window.location.reload();
+    // TEMP: disable hard reload while debugging cart refresh timing.
+    // window.location.reload();
   }
 
   /**
