@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   function reloadPage(reason, extra) {
     logPageReloadCall(reason, extra);
-    window.location.reload();
+    // Intentionally disabled: do not hard-reload page anywhere.
   }
 
   /**
@@ -547,10 +547,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             }
             // cart changed; mark stale so next sync refetches if no snapshot captured.
             cachedCartFetchedAt = 0;
-            reloadPage("cart-mutation:fetch-success", {
-              mutationKind: mutationKind,
-              url: url || null,
-            });
+            maybeFastSync("fetch:" + url);
           }
           return res;
         });
@@ -586,10 +583,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               lineItem: this.__shippingRulesCartLineItem || null,
             });
             cachedCartFetchedAt = 0;
-            reloadPage("cart-mutation:xhr-success", {
-              mutationKind: this.__shippingRulesCartMutationKind || null,
-              url: this.__shippingRulesCartUrl || null,
-            });
+            maybeFastSync("xhr");
           }
         });
       }
@@ -686,7 +680,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         cachedCartFetchedAt = 0;
-        await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
         return;
       }
 
@@ -722,7 +715,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         cachedCartFetchedAt = 0;
-        await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
       } else {
         debugLog("no change needed");
       }
