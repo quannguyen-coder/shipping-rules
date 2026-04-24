@@ -110,7 +110,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var cachedCart = null;
   var cachedCartFetchedAt = 0;
   var cartInFlight = null;
-  var miniCartReloadInFlight = null;
 
   async function getPublishedConfig(force) {
     var now = Date.now();
@@ -269,8 +268,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   async function reloadMiniCartFromCartJs(reason) {
-    if (miniCartReloadInFlight) return miniCartReloadInFlight;
-    miniCartReloadInFlight = (async function () {
     try {
       var cart = await fetchCartForMiniCartReload();
       captureCartSnapshot(cart);
@@ -287,15 +284,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           },
         }),
       );
+      window.dispatchEvent(new CustomEvent("cart:updated"));
       return cart;
     } catch (err) {
       debugLog("reloadMiniCartFromCartJs failed", { reason: reason, err: err });
       return null;
-    } finally {
-      miniCartReloadInFlight = null;
-    }
-    })();
-    return miniCartReloadInFlight;
     }
   }
 
