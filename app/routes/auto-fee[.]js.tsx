@@ -49,6 +49,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.log.apply(console, args);
   }
 
+  function logPageReloadCall(reason, extra) {
+    var payload = {
+      reason: reason || "unknown",
+      href:
+        typeof window !== "undefined" && window.location ? String(window.location.href || "") : "",
+      pathname:
+        typeof window !== "undefined" && window.location ? String(window.location.pathname || "") : "",
+      timestamp: new Date().toISOString(),
+      extra: extra || null,
+    };
+    debugLog("page reload requested", payload);
+    try {
+      console.info("[shipping-rules] reload-page", payload);
+      console.info("[shipping-rules] reload-page stack", new Error("reload stack").stack || "");
+    } catch (_) {
+      /* no-op */
+    }
+  }
+
+  function reloadPage(reason, extra) {
+    logPageReloadCall(reason, extra);
+    window.location.reload();
+  }
+
   /**
    * Variant id for Cart API: digits from ProductVariant GID, or already-numeric string.
    * Prefer Number() in JSON when safe so /cart/add.js matches storefront expectations.
@@ -244,7 +268,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     } finally {
       if (replacedCount === 0) {
         debugLog("no section replaced, hard reload");
-        window.location.reload();
+        reloadPage("refreshCartUi:no-section-replaced", {
+          replacedCount: replacedCount,
+        });
       }
     }
   }
