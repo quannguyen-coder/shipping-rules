@@ -128,6 +128,52 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return cartInFlight;
   }
 
+  function getCartFingerprint(maybeCart) {
+    if (!maybeCart || typeof maybeCart !== "object") return null;
+    var items = Array.isArray(maybeCart.items) ? maybeCart.items : null;
+    if (!items) return null;
+    var normalizedItems = items
+      .map(function (item) {
+        if (!item || typeof item !== "object") return null;
+        var key = item.key != null ? String(item.key) : "";
+        var id = item.id != null ? String(item.id) : "";
+        var qty = Number(item.quantity) || 0;
+        return key + "|" + id + "|" + qty;
+      })
+      .filter(function (row) {
+        return row != null;
+      })
+      .sort();
+    return JSON.stringify({
+      item_count: Number(maybeCart.item_count) || 0,
+      total_price: Number(maybeCart.total_price) || 0,
+      items: normalizedItems,
+    });
+  }
+
+  async function refreshCartUiIfChanged(beforeFingerprint, maybeAfterCart, reason) {
+    var nextFingerprint = getCartFingerprint(maybeAfterCart);
+    var changed = false;
+    if (beforeFingerprint && nextFingerprint) {
+      changed = beforeFingerprint !== nextFingerprint;
+    } else {
+      try {
+        var latestCart = await getCartSnapshot(true);
+        nextFingerprint = getCartFingerprint(latestCart);
+        if (latestCart) captureCartSnapshot(latestCart);
+        changed = !!beforeFingerprint && !!nextFingerprint && beforeFingerprint !== nextFingerprint;
+      } catch (err) {
+        debugLog("cart change verification failed", { reason: reason, err: err });
+      }
+    }
+    if (changed) {
+      debugLog("cart changed, refresh UI", { reason: reason });
+      refreshCartUi();
+    } else {
+      debugLog("skip UI refresh, cart unchanged", { reason: reason });
+    }
+  }
+
   var addCooldownUntil = 0;
   var debounceTimer = null;
 
@@ -384,14 +430,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             }
             // cart changed; mark stale so next sync refetches if no snapshot captured.
             cachedCartFetchedAt = 0;
-            // Force latest rules/config after cart mutation.
-            getPublishedConfig(true)
-              .catch(function () {
-                /* ignore config refresh errors; sync still runs */
-              })
-              .finally(function () {
-                maybeFastSync("fetch:" + url);
-              });
+            // Do not force refresh config on every mutation.
+            // Rules/config are already cached with TTL; forcing here causes noisy,
+            // low-value requests to app-proxy endpoint.
+            maybeFastSync("fetch:" + url);
           }
           return res;
         });
@@ -412,13 +454,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         this.addEventListener("loadend", function () {
           if (this.status >= 200 && this.status < 300) {
             cachedCartFetchedAt = 0;
-            getPublishedConfig(true)
-              .catch(function () {
-                /* ignore config refresh errors; sync still runs */
-              })
-              .finally(function () {
-                maybeFastSync("xhr");
-              });
+            // Same as fetch hook: keep config refresh on TTL, not per mutation.
+            maybeFastSync("xhr");
           }
         });
       }
@@ -477,6 +514,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         var idForCart = variantIdForCartPayload(feeVariantIdStr);
         debugLog("adding fee line", { idForCart: idForCart });
+        var beforeAddFingerprint = getCartFingerprint(cart);
         const addRes = await fetch(ADD_URL, {
           method: "POST",
           credentials: "same-origin",
@@ -505,16 +543,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
         addCooldownUntil = 0;
         debugLog("add success");
+        var addPayload = null;
+        try {
+          addPayload = await addRes.clone().json();
+          captureCartSnapshot(addPayload);
+        } catch (_) {
+          /* ignore payload parse errors, verify via cart fetch fallback */
+        }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-added"));
         cachedCartFetchedAt = 0;
-        refreshCartUi();
+        await refreshCartUiIfChanged(beforeAddFingerprint, addPayload, "add-fee-line");
         return;
       }
 
       if (!shouldHaveFeeLine && feeLine) {
         debugLog("removing fee line", { id: feeVariantIdStr });
         var changeId = feeLine.key || variantIdForCartPayload(feeVariantIdStr);
-        await fetch(CHANGE_URL, {
+        var beforeRemoveFingerprint = getCartFingerprint(cart);
+        const removeRes = await fetch(CHANGE_URL, {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
@@ -523,10 +569,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             quantity: 0,
           }),
         });
+        if (!removeRes.ok) {
+          var removeErrText = await removeRes.text();
+          console.warn(
+            "[shipping-rules] auto-fee: cart/change.js failed",
+            removeRes.status,
+            removeErrText,
+          );
+          return;
+        }
         debugLog("remove success");
+        var removePayload = null;
+        try {
+          removePayload = await removeRes.clone().json();
+          captureCartSnapshot(removePayload);
+        } catch (_) {
+          /* ignore payload parse errors, verify via cart fetch fallback */
+        }
         window.dispatchEvent(new CustomEvent("shipping-rules:fee-line-removed"));
         cachedCartFetchedAt = 0;
-        refreshCartUi();
+        await refreshCartUiIfChanged(beforeRemoveFingerprint, removePayload, "remove-fee-line");
       } else {
         debugLog("no change needed");
       }
