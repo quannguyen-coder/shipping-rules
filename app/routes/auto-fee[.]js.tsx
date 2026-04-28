@@ -362,44 +362,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     var variantSelector = 'input[data-quantity-variant-id="' + feeVariantIdStr + '"]';
-    var rowSelector =
-      '.cart-item:has(' +
-      variantSelector +
-      '), .cart__item:has(' +
-      variantSelector +
-      '), tr[role="row"]:has(' +
-      variantSelector +
-      '), li:has(' +
-      variantSelector +
-      ')';
+    var quantityInputSelector = "quantity-input:has(" + variantSelector + ")";
+    var removeButtonSelector = quantityInputSelector + " + cart-remove-button";
 
     styleEl.textContent =
       variantSelector +
       ",\\n" +
-      rowSelector +
-      ' input[name^="updates"],\\n' +
-      rowSelector +
-      " input[type=\\"number\\"],\\n" +
-      rowSelector +
-      ' button[name="minus"],\\n' +
-      rowSelector +
-      ' button[name="plus"],\\n' +
-      rowSelector +
-      ' button[name="remove"],\\n' +
-      rowSelector +
-      " [data-quantity-input],\\n" +
-      rowSelector +
-      " [data-quantity-selector],\\n" +
-      rowSelector +
-      " .quantity,\\n" +
-      rowSelector +
+      quantityInputSelector +
+      ",\\n" +
+      quantityInputSelector +
       " .quantity__button,\\n" +
-      rowSelector +
+      quantityInputSelector +
       " .quantity__input,\\n" +
-      rowSelector +
-      " .cart-item__quantity,\\n" +
-      rowSelector +
-      " cart-remove-button {\\n" +
+      removeButtonSelector +
+      " {\\n" +
       "  display: none !important;\\n" +
       "}";
   }
