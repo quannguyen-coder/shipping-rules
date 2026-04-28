@@ -350,54 +350,58 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return 0;
   }
 
-  function hideFeeLineControls(feeVariantIdStr, feeLineKey, feeLineIndexOneBased) {
+  function installFeeLineControlStyles(feeVariantIdStr) {
     if (typeof document === "undefined") return;
     if (!feeVariantIdStr) return;
-    var controlSelector =
-      'input[name^="updates"], input[type="number"], button[name="minus"], button[name="plus"], button[name="remove"], [data-quantity-input], [data-quantity-selector], .quantity__button, .quantity__input, cart-remove-button, a[href*="/cart/change"], a[href*="line="]';
-    var rowSelector = ".cart-item, .cart__item, tr[role='row'], [data-cart-item-key], [data-line-item-key], li";
-    var feeRows = [];
-    function addRowFromNode(node) {
-      if (!(node instanceof HTMLElement)) return;
-      var row = node.closest(rowSelector);
-      if (!(row instanceof HTMLElement)) return;
-      if (feeRows.indexOf(row) === -1) feeRows.push(row);
+    var styleId = "shipping-rules-auto-fee-controls";
+    var styleEl = document.getElementById(styleId);
+    if (!(styleEl instanceof HTMLStyleElement)) {
+      styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
     }
 
-    document
-      .querySelectorAll('input[data-quantity-variant-id="' + feeVariantIdStr + '"]')
-      .forEach(addRowFromNode);
-    document
-      .querySelectorAll('a[href*="variant=' + feeVariantIdStr + '"]')
-      .forEach(addRowFromNode);
-    if (feeLineKey) {
-      document
-        .querySelectorAll('[data-cart-item-key="' + feeLineKey + '"], [data-line-item-key="' + feeLineKey + '"]')
-        .forEach(addRowFromNode);
-    }
+    var variantSelector = 'input[data-quantity-variant-id="' + feeVariantIdStr + '"]';
+    var rowSelector =
+      '.cart-item:has(' +
+      variantSelector +
+      '), .cart__item:has(' +
+      variantSelector +
+      '), tr[role="row"]:has(' +
+      variantSelector +
+      '), li:has(' +
+      variantSelector +
+      ')';
 
-    feeRows.forEach(function (row) {
-      var controls = row.querySelectorAll(controlSelector);
-      controls.forEach(function (el) {
-        if (!(el instanceof HTMLElement)) return;
-        el.style.setProperty("display", "none", "important");
-        el.setAttribute("aria-hidden", "true");
-        if ("disabled" in el) el.disabled = true;
-      });
-    });
-
-    // Dawn cart drawer/cart table: hide the full quantity cell for fee line.
-    var feeQtyInputs = document.querySelectorAll('input[data-quantity-variant-id="' + feeVariantIdStr + '"]');
-    feeQtyInputs.forEach(function (input) {
-      if (!(input instanceof HTMLElement)) return;
-      var row = input.closest("tr.cart-item");
-      if (!(row instanceof HTMLElement)) return;
-      var qtyCell = row.querySelector("td.cart-item__quantity");
-      if (qtyCell instanceof HTMLElement) {
-        qtyCell.style.setProperty("display", "none", "important");
-        qtyCell.setAttribute("aria-hidden", "true");
-      }
-    });
+    styleEl.textContent =
+      variantSelector +
+      ",\\n" +
+      rowSelector +
+      ' input[name^="updates"],\\n' +
+      rowSelector +
+      " input[type=\\"number\\"],\\n" +
+      rowSelector +
+      ' button[name="minus"],\\n' +
+      rowSelector +
+      ' button[name="plus"],\\n' +
+      rowSelector +
+      ' button[name="remove"],\\n' +
+      rowSelector +
+      " [data-quantity-input],\\n" +
+      rowSelector +
+      " [data-quantity-selector],\\n" +
+      rowSelector +
+      " .quantity,\\n" +
+      rowSelector +
+      " .quantity__button,\\n" +
+      rowSelector +
+      " .quantity__input,\\n" +
+      rowSelector +
+      " .cart-item__quantity,\\n" +
+      rowSelector +
+      " cart-remove-button {\\n" +
+      "  display: none !important;\\n" +
+      "}";
   }
 
   var syncInProgress = false;
@@ -596,13 +600,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.warn("[shipping-rules] auto-fee: missing feeVariantId in app proxy config");
         return;
       }
+      installFeeLineControlStyles(feeVariantIdStr);
 
       const cart = await getCartSnapshot(false);
       const items = Array.isArray(cart?.items) ? cart.items : [];
       const rules = parseRules(config?.rules);
 
       const feeLine = items.find((item) => String(item.id) === feeVariantIdStr) || null;
-      var feeLineIndex = feeLine ? items.findIndex((item) => item && item.key === feeLine.key) + 1 : 0;
       const qualifyingLines = items.filter((item) =>
         lineQualifiesForFee(item, feeVariantIdStr),
       );
@@ -612,9 +616,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const matchedRule = findMatchingRule(totalGrams, rules);
       const feeTotal = calculatedFeeTotal(matchedRule, qualifyingLines);
       const shouldHaveFeeLine = qualifyingLines.length > 0 && feeTotal > 0;
-      if (feeLine) {
-        hideFeeLineControls(feeVariantIdStr, feeLine.key || null, feeLineIndex);
-      }
       debugLog("sync snapshot", {
         itemCount: items.length,
         feeLinePresent: !!feeLine,
