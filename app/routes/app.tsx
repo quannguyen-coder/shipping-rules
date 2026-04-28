@@ -22,7 +22,6 @@ export default function App() {
         <s-link href="/app/shipping-rules">Shipping rules</s-link>
         <s-link href="/app/cart-transform-settings">Cart Transform settings</s-link>
         <s-link href="/app/cart-transform-activation">Cart Transform activation</s-link>
-        <s-link href="/app/carrier-services">Carrier services</s-link>
         <s-link href="/app/additional">Additional page</s-link>
       </s-app-nav>
       <Outlet />
