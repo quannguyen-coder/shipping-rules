@@ -403,17 +403,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var syncInProgress = false;
   var syncRerunRequested = false;
   var syncCurrentPromise = Promise.resolve();
-  var lastFastSyncAt = 0;
 
   function maybeFastSync(reason) {
-    var now = Date.now();
-    if (now - lastFastSyncAt < 120) return;
-    lastFastSyncAt = now;
-    debugLog("fast sync trigger", { reason: reason });
-    scheduleSyncFeeLine(0);
-    setTimeout(function () {
-      scheduleSyncFeeLine(60);
-    }, 60);
+    scheduleSyncFeeLine(1500);
   }
 
   function isCartMutationUrl(urlLike) {
