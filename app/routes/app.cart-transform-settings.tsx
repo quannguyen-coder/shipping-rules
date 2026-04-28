@@ -371,6 +371,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  if (intent === "deactivate_transform") {
+    const id = String(formData.get("transformId") ?? "").trim();
+    if (!id) {
+      return { ok: false, error: "Transform ID is required." };
+    }
+
+    const response = await admin.graphql(
+      `#graphql
+        mutation DeactivateCartTransform($id: ID!) {
+          cartTransformDelete(id: $id) {
+            deletedId
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+      { variables: { id } },
+    );
+    const json = (await response.json()) as {
+      data?: {
+        cartTransformDelete?: {
+          userErrors?: { message: string }[];
+        };
+      };
+      errors?: { message: string }[];
+    };
+
+    const errors = [
+      ...(json.errors?.map((e) => e.message) ?? []),
+      ...(json.data?.cartTransformDelete?.userErrors?.map((e) => e.message) ?? []),
+    ];
+    if (errors.length > 0) {
+      return { ok: false, error: errors.join(", ") };
+    }
+    return { ok: true, message: "Cart Transform deactivated." };
+  }
+
   const feeVariantId = String(formData.get("feeVariantId") ?? "").trim();
 
   if (feeVariantId && !feeVariantId.startsWith("gid://shopify/ProductVariant/")) {
@@ -455,6 +493,17 @@ export default function CartTransformSettingsPage() {
         </s-paragraph>
       </s-section>
 
+      {actionData && "error" in actionData && actionData.error ? (
+        <s-section>
+          <s-text tone="critical">{actionData.error}</s-text>
+        </s-section>
+      ) : null}
+      {actionData && "message" in actionData && actionData.message ? (
+        <s-section>
+          <s-text tone="success">{actionData.message}</s-text>
+        </s-section>
+      ) : null}
+
       <s-section heading={`Active Cart Transforms (${transforms.length})`}>
         {loaderError ? (
           <s-paragraph>
@@ -479,6 +528,13 @@ export default function CartTransformSettingsPage() {
                   <s-text type="strong">{transform.id}</s-text>
                   <s-text>Function: {transform.functionId}</s-text>
                   <s-text>blockOnFailure: {String(transform.blockOnFailure)}</s-text>
+                  <Form method="post">
+                    <input type="hidden" name="_intent" value="deactivate_transform" />
+                    <input type="hidden" name="transformId" value={transform.id} />
+                    <s-button type="submit" tone="critical" variant="tertiary">
+                      Deactivate
+                    </s-button>
+                  </Form>
                 </s-stack>
               </s-box>
             ))}
@@ -524,16 +580,6 @@ export default function CartTransformSettingsPage() {
           </Form>
         </s-stack>
 
-        {actionData && "error" in actionData && actionData.error ? (
-          <s-paragraph>
-            <s-text tone="critical">{actionData.error}</s-text>
-          </s-paragraph>
-        ) : null}
-        {actionData && "message" in actionData && actionData.message ? (
-          <s-paragraph>
-            <s-text tone="success">{actionData.message}</s-text>
-          </s-paragraph>
-        ) : null}
         {actionData &&
         "feeVariantId" in actionData &&
         actionData.feeVariantId &&
