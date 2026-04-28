@@ -405,7 +405,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   var syncCurrentPromise = Promise.resolve();
 
   function maybeFastSync(reason) {
-    scheduleSyncFeeLine(1500);
+    scheduleSyncFeeLine(3000);
   }
 
   function isCartMutationUrl(urlLike) {
