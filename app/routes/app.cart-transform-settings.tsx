@@ -6,6 +6,14 @@ import { syncShippingRulesMetafield } from "../lib/sync-shipping-rules-metafield
 type LoaderData = {
   currentFeeVariantId: string;
   shop: string;
+  transforms: CartTransformNode[];
+  loaderError?: string;
+};
+
+type CartTransformNode = {
+  id: string;
+  functionId: string;
+  blockOnFailure: boolean;
 };
 
 function firstVariantIdFromProduct(product: {
@@ -129,37 +137,67 @@ async function publishProductToOnlineStore(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  let transforms: CartTransformNode[] = [];
+  let loaderError: string | undefined;
 
-  const response = await admin.graphql(
-    `#graphql
-      query CartTransformSettings {
-        shop {
-          metafield(namespace: "$app", key: "shipping_rules_config") {
-            jsonValue
+  try {
+    const response = await admin.graphql(
+      `#graphql
+        query CartTransformSettings {
+          shop {
+            metafield(namespace: "$app", key: "shipping_rules_config") {
+              jsonValue
+            }
           }
-        }
-      }`,
-  );
+          cartTransforms(first: 20) {
+            nodes {
+              id
+              functionId
+              blockOnFailure
+            }
+          }
+        }`,
+    );
 
-  const json = (await response.json()) as {
-    data?: {
-      shop?: {
-        metafield?: {
-          jsonValue?: unknown;
-        } | null;
+    const json = (await response.json()) as {
+      data?: {
+        shop?: {
+          metafield?: {
+            jsonValue?: unknown;
+          } | null;
+        };
+        cartTransforms?: {
+          nodes?: CartTransformNode[];
+        };
       };
+      errors?: Array<{ message: string }>;
     };
-  };
 
-  const config =
-    (json.data?.shop?.metafield?.jsonValue as Record<string, unknown> | null) ??
-    {};
+    const topErrors = json.errors?.map((e) => e.message).join(", ");
+    if (topErrors) {
+      loaderError = topErrors;
+    }
 
-  return {
-    currentFeeVariantId:
-      typeof config.feeVariantId === "string" ? config.feeVariantId : "",
-    shop: session.shop,
-  } satisfies LoaderData;
+    const config =
+      (json.data?.shop?.metafield?.jsonValue as Record<string, unknown> | null) ??
+      {};
+    transforms = json.data?.cartTransforms?.nodes ?? [];
+
+    return {
+      currentFeeVariantId:
+        typeof config.feeVariantId === "string" ? config.feeVariantId : "",
+      shop: session.shop,
+      transforms,
+      loaderError,
+    } satisfies LoaderData;
+  } catch (err) {
+    return {
+      currentFeeVariantId: "",
+      shop: session.shop,
+      transforms,
+      loaderError: err instanceof Error ? err.message : String(err),
+    } satisfies LoaderData;
+  }
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -361,7 +399,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function CartTransformSettingsPage() {
-  const { currentFeeVariantId, shop } = useLoaderData<typeof loader>();
+  const { currentFeeVariantId, shop, transforms, loaderError } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -414,11 +453,37 @@ export default function CartTransformSettingsPage() {
           <s-text type="strong">read_publications</s-text> and{" "}
           <s-text type="strong">write_publications</s-text> scopes (reinstall the app if prompted).
         </s-paragraph>
-        <s-paragraph>
-          Activate the transform under{" "}
-          <s-link href="/app/cart-transform-activation">Cart Transform activation</s-link>
-          .
-        </s-paragraph>
+      </s-section>
+
+      <s-section heading={`Active Cart Transforms (${transforms.length})`}>
+        {loaderError ? (
+          <s-paragraph>
+            <s-text tone="critical">
+              Failed to load cart transform data: {loaderError}
+            </s-text>
+          </s-paragraph>
+        ) : null}
+        {transforms.length === 0 ? (
+          <s-paragraph>No active cart transforms.</s-paragraph>
+        ) : (
+          <s-stack direction="block" gap="base">
+            {transforms.map((transform) => (
+              <s-box
+                key={transform.id}
+                padding="base"
+                borderWidth="base"
+                borderRadius="base"
+                background="subdued"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-text type="strong">{transform.id}</s-text>
+                  <s-text>Function: {transform.functionId}</s-text>
+                  <s-text>blockOnFailure: {String(transform.blockOnFailure)}</s-text>
+                </s-stack>
+              </s-box>
+            ))}
+          </s-stack>
+        )}
       </s-section>
 
       <s-section heading="Separate fee line configuration">
